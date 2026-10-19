@@ -40,6 +40,7 @@ Una decisión en estado Propuesta necesita aprobación humana antes de implement
 | ADR-0018 | Esqueleto de gobierno tomado de base-shop | Aceptada |
 | ADR-0019 | Hosting y servidor se deciden con el primer cliente | Aceptada |
 | ADR-0020 | Un solo repositorio para la plataforma | Aceptada |
+| ADR-0021 | Demo para futuros clientes, separado del producto | Propuesta |
 
 ---
 
@@ -266,3 +267,20 @@ Reemplazada parcialmente por ADR-0002 a ADR-0006 (2026-10-18). Sigue vigente par
 - **Alternativas consideradas:** Repositorios separados para API, interfaz y contratos; descartada porque obliga a versionar y publicar el contrato de eventos entre repositorios para un solo equipo. Un repositorio con el kit en Office; descartada por ADR-0002.
 - **Consecuencias:** Un segundo repositorio solo se justifica para una aplicación nativa o un conector ERP grande (Fase 5). La CI mínima (T-010) se activa cuando T-100 cree el primer proyecto de Node; la protección de `main` se configura en GitHub.
 - **Estado:** Aceptada (2026-10-19, Fernando).
+
+---
+
+## ADR-0021 — Demo para futuros clientes, separado del producto
+
+- **Fecha:** 2026-10-19
+- **Contexto:** Fernando pidió el 2026-10-19 un demo que los futuros clientes puedan probar: registrar lotes y ver sus estados y el inventario. Choca con tres reglas vigentes: no hay código de producto hasta cerrar el Sprint 0 (`PROGRESS.md`), el hosting se decide con el primer cliente (ADR-0019) y el cliente básico no instala software para "ver de qué se trata" (PC antigua, Internet limitado, H-11).
+- **Decisión propuesta:**
+  1. El demo es material de ventas, no el producto ni la prueba técnica T-008. Su código no se copia al producto sin pasar por T-101.
+  2. Es una página web que corre entera en el navegador, escrita en TypeScript (el lenguaje de ADR-0007), sin servidor ni base de datos. Los eventos se guardan en el navegador de quien lo prueba: cada visitante tiene sus propios datos, nadie ve los de otro y un botón regresa al estado inicial.
+  3. Se comparte con un enlace privado (página publicada en claude.ai) que se abre sin instalar nada y no obliga a elegir proveedor de hosting. Una vez abierto, funciona sin Internet.
+  4. Aplica las reglas ya escritas: eventos inmutables con UUID y estado derivado (ADR-0005), estado del lote en tres ejes (ADR-0009) con las etapas configuradas del Productor A (ADR-0015), jerarquía Centro → Invernadero → Sector → Mesa (ADR-0003), folio corto (ADR-0010), fecha de la operación aparte de la de captura (BR-EVT-06) y las reglas BR-LOT, BR-CAL y BR-ENT que toca. Lo que aún es Propuesta se muestra como propuesta.
+  5. Usa los datos ficticios del caso Productor A, marcados como tales en pantalla (ADR-0017).
+  6. El código vive en este repositorio en `demo/`, fuera de `apps/` y `packages/`, con sus propias pruebas, incluida la de reconstrucción. La guía para el cliente va en Word (ADR-0016), en la carpeta compartida.
+- **Alternativas consideradas:** Demo con NestJS y SQLite en el entorno local (es el stack, pero el cliente tendría que instalarlo o verlo solo en la laptop del consultor; esa medición es T-008); servidor público en la nube (obliga a elegir proveedor antes del primer cliente, ADR-0019); esperar al MVP (no hay nada que mostrar en ventas hasta entonces); dejar el demo fuera de Git como `spikes/` (ADR-0020), descartada porque el demo se mantiene y se prueba, no se desecha.
+- **Consecuencias:** El demo no demuestra servidor, sincronización entre equipos, captura desde teléfono sin señal ni rendimiento en la PC mínima; eso sigue en T-008. Cada cambio de reglas del producto se lleva al demo a mano mientras sean código separado. Si el visitante borra los datos de su navegador, el demo vuelve al estado inicial. Amplía ADR-0020 con la carpeta `demo/`.
+- **Estado:** Propuesta (P-09).

@@ -11,3 +11,4 @@ Formato por versión, como en base-shop. No hay versiones publicadas.
 - Recorrido del kit con el caso Productor A (T-007): prompt de ficha AS-IS probado (v2) y prompt de informe propuesto en `AI_WORKFLOW.md`.
 - Kit del consultor v0.2 con las 33 mejoras aprobadas (T-300) y plantilla de configuración del productor (T-301); prompts de ficha AS-IS v3 y de configuración v1 en `AI_WORKFLOW.md`.
 - Hallazgos del caso Productor A llevados a la plataforma (T-011): resiembra entre lotes, folio corto con bloques por dispositivo (ADR-0010 aceptada), entregas con varios lotes, ficha de lote imprimible, catálogo de productos con intervalo de seguridad, fecha de la operación aparte de la de captura y PC mínima de referencia.
+- Propuesta de demo para futuros clientes en el navegador, separado del producto (ADR-0021, T-012).

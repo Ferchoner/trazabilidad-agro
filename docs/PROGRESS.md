@@ -36,6 +36,7 @@ Sprint 0 — Discovery and Architecture, desde el 2026-10-18 (`SPRINT.md`). Sin 
 ## Next
 
 - Aprobar las ADR en estado Propuesta (T-003)
+- Aprobar ADR-0021 para construir el demo para futuros clientes (T-012, P-09)
 
 ## Fuera del MVP
 
@@ -53,6 +54,7 @@ Nada bloqueado.
 |---|---|---|---|
 | P-04 | Navegadores mínimos, volumen por temporada y usuarios simultáneos. La PC de referencia ya está fijada: 2016, Windows 10, 4 GB, disco mecánico (H-11, `REQUIREMENTS.md` §9) | T-401 | Fernando / primer cliente |
 | P-06 | HTTPS en la red local para PWA instalable y cámara como lector | T-132 | Equipo |
+| P-09 | Demo para futuros clientes: forma, dónde se comparte y dónde vive el código (ADR-0021) | T-012 | Fernando |
 | P-08 | Conexión nodo local–servidor: autenticación del nodo y frecuencia de sincronización (TLS y dominio, con el cliente) | T-105 | Equipo |
 
 ### Se deciden con el primer cliente (ADR-0019)
