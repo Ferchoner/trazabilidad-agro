@@ -26,9 +26,12 @@ Sprint 0 — Discovery and Architecture, desde el 2026-10-18 (`SPRINT.md`). Sin 
 - T-008 Prueba técnica: rehacer la exploración en NestJS con PostgreSQL y SQLite
 - T-010 Repositorio creado y documentación subida; falta la CI (con T-100) y proteger `main`
 
+## Review
+
+- T-007 Kit recorrido con el caso Productor A: documentos llenados, 33 mejoras, 15 hallazgos para la plataforma, 9 casos de aceptación y configuración inicial en `kit_consultor/caso_productor_A/` (carpeta compartida). Falta que Fernando apruebe las mejoras (T-300).
+
 ## Next
 
-- T-007 Recorrer el kit con el caso Productor A
 - Aprobar las ADR en estado Propuesta (T-003)
 
 ## Fuera del MVP
@@ -63,7 +66,7 @@ No bloquean el Sprint 0.
 | ID | Decisión | Bloquea |
 |---|---|---|
 | P-10 | Estado del lote en tres ejes (ADR-0009) | T-104 |
-| P-11 | Formato del folio y código de nodo visible (ADR-0010) | T-122 |
+| P-11 | Formato del folio y código de nodo visible (ADR-0010); folio al sembrar en un teléfono sin conexión (hallazgo H-03 de T-007) | T-122 |
 | P-12 | Resolución de conflictos: quién y cómo (ADR-0013) | T-133 |
 | P-13 | Relación lote–charola: uno a muchos, mezcla | T-123 |
 | P-14 | Trazabilidad a nivel lote, charola o ambos; etiquetado de charolas | T-123 |
