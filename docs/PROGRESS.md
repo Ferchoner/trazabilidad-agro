@@ -18,6 +18,7 @@ Sprint 0 — Discovery and Architecture, desde el 2026-10-18 (`SPRINT.md`). Sin 
 - [x] Base de datos híbrida: PostgreSQL en servidor externo, una base por productor, y SQLite en nodo local (ADR-0007, ADR-0008)
 - [x] Hosting y servidor se deciden con el primer cliente; mientras tanto, solo entorno local (ADR-0019)
 - [x] Un solo repositorio: `Ferchoner/trazabilidad-agro` (ADR-0020)
+- [x] Kit recorrido con el caso Productor A (T-007): 33 mejoras aprobadas por Fernando el 2026-10-19
 
 ## In Progress
 
@@ -28,11 +29,13 @@ Sprint 0 — Discovery and Architecture, desde el 2026-10-18 (`SPRINT.md`). Sin 
 
 ## Review
 
-- T-007 Kit recorrido con el caso Productor A: documentos llenados, 33 mejoras, 15 hallazgos para la plataforma, 9 casos de aceptación y configuración inicial en `kit_consultor/caso_productor_A/` (carpeta compartida). Falta que Fernando apruebe las mejoras (T-300).
+- T-300 Kit v0.2 con las 33 mejoras aplicadas: Word 00 a 06 y 09 regenerados desde sus fuentes, nuevos Word 11 (acta de arranque), 12 (ficha de oportunidad), 13 (prueba de trazabilidad) y 14 (borrador de confidencialidad, requiere revisión legal), Excel 05, 07, 08 y 10 ajustados y presentación corregida. La v0.1 queda en `kit_consultor/versiones_anteriores/v0.1/`. M-32 (prompt del informe) se prueba con el primer cliente.
+- T-301 Plantilla Excel 15 "Configuración del productor" y prompt de configuración v1 en `AI_WORKFLOW.md`.
 
 ## Next
 
 - Aprobar las ADR en estado Propuesta (T-003)
+- Decidir cómo entran a la documentación de la plataforma los hallazgos H-01 a H-15 de T-007 (reglas, casos de uso, P-xx)
 
 ## Fuera del MVP
 

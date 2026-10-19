@@ -17,7 +17,7 @@
 | Arquitectura y dominio aprobados | Pendiente | T-003 |
 | Modelo de datos aprobado | Pendiente | T-004 |
 | Contratos de la API aprobados | Pendiente | T-005 |
-| Kit recorrido con el caso Productor A y lista de mejoras | En revisión | T-007 |
+| Kit recorrido con el caso Productor A y lista de mejoras | DONE; mejoras aplicadas en el kit v0.2 (en revisión) | T-007, T-300, T-301 |
 | Prueba técnica en PC básica | En curso | T-008 |
 | Piloto y KPIs | Pendiente | T-009 |
 | Repositorio y CI | En curso: repositorio creado, falta CI | T-010, ADR-0020 |
