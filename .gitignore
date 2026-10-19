@@ -1,0 +1,21 @@
+# Dependencias y compilados
+node_modules/
+dist/
+coverage/
+
+# Configuración local y secretos (SECURITY.md)
+.env
+.env.*
+!.env.example
+
+# Bases de datos locales y respaldos
+*.sqlite
+*.sqlite3
+*.db
+respaldos/
+
+# Sistema y editores
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
