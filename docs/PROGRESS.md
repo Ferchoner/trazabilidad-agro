@@ -29,13 +29,13 @@ Sprint 0 — Discovery and Architecture, desde el 2026-10-18 (`SPRINT.md`). Sin 
 
 ## Review
 
+- T-011 Hallazgos H-01 a H-15 del caso Productor A llevados a reglas, casos de uso, modelo y ADR-0010 (aceptada), con las decisiones recomendadas que Fernando aprobó el 2026-10-19. Se confirman con el primer productor real.
 - T-300 Kit v0.2 con las 33 mejoras aplicadas: Word 00 a 06 y 09 regenerados desde sus fuentes, nuevos Word 11 (acta de arranque), 12 (ficha de oportunidad), 13 (prueba de trazabilidad) y 14 (borrador de confidencialidad, requiere revisión legal), Excel 05, 07, 08 y 10 ajustados y presentación corregida. La v0.1 queda en `kit_consultor/versiones_anteriores/v0.1/`. M-32 (prompt del informe) se prueba con el primer cliente.
 - T-301 Plantilla Excel 15 "Configuración del productor" y prompt de configuración v1 en `AI_WORKFLOW.md`.
 
 ## Next
 
 - Aprobar las ADR en estado Propuesta (T-003)
-- Decidir cómo entran a la documentación de la plataforma los hallazgos H-01 a H-15 de T-007 (reglas, casos de uso, P-xx)
 
 ## Fuera del MVP
 
@@ -51,7 +51,7 @@ Nada bloqueado.
 
 | ID | Decisión | Bloquea | Responsable |
 |---|---|---|---|
-| P-04 | PC mínima: sistema operativo, RAM, navegador; volumen por temporada; usuarios simultáneos | T-001, T-401 | Fernando / diagnóstico |
+| P-04 | Navegadores mínimos, volumen por temporada y usuarios simultáneos. La PC de referencia ya está fijada: 2016, Windows 10, 4 GB, disco mecánico (H-11, `REQUIREMENTS.md` §9) | T-401 | Fernando / primer cliente |
 | P-06 | HTTPS en la red local para PWA instalable y cámara como lector | T-132 | Equipo |
 | P-08 | Conexión nodo local–servidor: autenticación del nodo y frecuencia de sincronización (TLS y dominio, con el cliente) | T-105 | Equipo |
 
@@ -69,9 +69,9 @@ No bloquean el Sprint 0.
 | ID | Decisión | Bloquea |
 |---|---|---|
 | P-10 | Estado del lote en tres ejes (ADR-0009) | T-104 |
-| P-11 | Formato del folio y código de nodo visible (ADR-0010); folio al sembrar en un teléfono sin conexión (hallazgo H-03 de T-007) | T-122 |
+| P-11 | Tamaño del bloque de folios por dispositivo y qué hacer si se agota sin conexión (ADR-0010) | T-122 |
 | P-12 | Resolución de conflictos: quién y cómo (ADR-0013) | T-133 |
-| P-13 | Relación lote–charola: uno a muchos, mezcla | T-123 |
+| P-13 | Resiembra con plántula de otra variedad (la mezcla de lotes ya se resolvió con BR-CHA-04) | T-124 |
 | P-14 | Trazabilidad a nivel lote, charola o ambos; etiquetado de charolas | T-123 |
 | P-15 | Fusión de lotes, trasplante y cambio de charola | T-124 |
 | P-16 | Unidad de conteo de plántula | T-122 |
@@ -80,8 +80,7 @@ No bloquean el Sprint 0.
 | P-19 | Normativa y certificaciones (SENASICA, GlobalG.A.P., exportación) | T-125 |
 | P-20 | Origen del material vegetal y certificado fitosanitario | T-121 |
 | P-21 | Reconciliación inventario operativo vs. financiero | Fase 4 |
-| P-22 | Reservas y pedidos en el MVP o en Fase 4 | T-127 |
-| P-23 | Reportes mínimos del MVP | T-129 |
+| P-23 | Reportes mínimos del MVP (ya incluye la ficha de lote, UC-REP-04) | T-129 |
 | P-24 | KPIs del piloto y metas | T-009 |
 
 ### API e integración
@@ -106,6 +105,7 @@ No bloquean el Sprint 0.
 | P-01 | Stack | TypeScript y NestJS (ADR-0007), 2026-10-18 |
 | P-03 | Despliegue y motor | Híbrido: servidor PostgreSQL con una base por productor y nodo local SQLite (ADR-0007, ADR-0008), 2026-10-19 |
 | P-02 | Repositorio | Uno solo: `Ferchoner/trazabilidad-agro` en GitHub (ADR-0020), 2026-10-19 |
+| P-22 | Reservas y pedidos | Reservas en Fase 4 (BR-ENT-04); una entrega puede tener varios lotes por pedido (BR-ENT-02), 2026-10-19 |
 
 ## Notas
 

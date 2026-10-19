@@ -10,6 +10,8 @@ Seguridad por diseño, mínimo privilegio, validación de toda entrada, errores 
 
 Usuarios locales con PIN o contraseña guardados con hash lento con sal (PENDIENTE: algoritmo según stack; base-shop usa Argon2id). Sesión con token aleatorio y expiración. P-40 decide PIN o contraseña y su longitud mínima.
 
+Teléfonos personales (caso Productor A, H-13): la captura se hace en teléfonos de los trabajadores. Cada persona inicia sesión con su usuario aunque el teléfono sea de otro; la sesión expira sola; el teléfono no guarda PIN ni contraseña; la cola de eventos se borra al sincronizarse; un administrador puede revocar un dispositivo. Qué datos quedan en el teléfono y por cuánto tiempo se cierra con P-40 y P-41.
+
 ## Autorización
 
 Permisos por rol con la matriz de `REQUIREMENTS.md` §4, verificados en el servidor para cada evento. Un evento lleva siempre el usuario autenticado, no el que diga el cliente.
@@ -29,6 +31,8 @@ Permisos por rol con la matriz de `REQUIREMENTS.md` §4, verificados en el servi
 ## Respaldos
 
 Respaldo automático diario y manual; prueba de restauración como criterio de aceptación (P-05). Un respaldo contiene datos personales de clientes del productor y se trata igual que la base.
+
+Cortes de luz (caso Productor A, H-12: sin no-break): la base local se configura para que un apagón no la corrompa ni pierda eventos confirmados, y T-106 lo prueba cortando el proceso durante una escritura.
 
 ## Datos personales
 

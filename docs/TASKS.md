@@ -22,9 +22,10 @@ Las decisiones pendientes (P-xx) están en `PROGRESS.md`. Una tarea BLOCKED indi
 | T-005 | Aprobar contratos de la API | TODO | T-003 | `API_SPEC.md` con cada operación: ruta, permiso, request, response, errores e idempotencia |
 | T-006 | Resolver contradicciones y ambigüedades | IN_PROGRESS | — | Los 18 huecos de `REQUIREMENTS.md` §10 cerrados con ADR, regla o P-xx con responsable |
 | T-007 | Recorrer el kit del consultor con el caso Productor A | DONE | — | Cada documento del kit (Office) aplicado al caso; lista de mejoras a documentos, preguntas y prompts con prioridad; preguntas que faltan para cerrar P-13 a P-24; configuración inicial del productor derivada del diagnóstico (ADR-0015, ADR-0017) |
-| T-008 | Prueba técnica en una PC básica | IN_PROGRESS | — | Prototipo desechable que demuestre en la PC mínima: registro idempotente, reconstrucción, captura sin conexión desde teléfono, sincronización entre dos nodos e importación del Excel del Productor A, con tiempos medidos. Antecedente: exploración en Python + SQLite (`spikes/prototipo-python-sqlite`, 12 pruebas). Falta rehacerla con NestJS: mismo código contra PostgreSQL y SQLite, instalación del nodo local en Windows 10 sin compilar, consumo de memoria y sincronización nodo–servidor |
+| T-008 | Prueba técnica en una PC básica | IN_PROGRESS | — | Prototipo desechable que demuestre en la PC mínima: registro idempotente, reconstrucción, captura sin conexión desde teléfono, sincronización entre dos nodos e importación del Excel del Productor A, con tiempos medidos. Antecedente: exploración en Python + SQLite (`spikes/prototipo-python-sqlite`, 12 pruebas). Falta rehacerla con NestJS: mismo código contra PostgreSQL y SQLite, instalación del nodo local en Windows 10 sin compilar, consumo de memoria, sincronización nodo–servidor, reconstrucción con una semana de eventos atrasados (H-02) y bloques de folio por dispositivo (ADR-0010). PC de referencia: 2016, 4 GB, disco mecánico (H-11) |
 | T-009 | Definir piloto y KPIs | TODO | T-007 | Operación del piloto acotada; KPIs de `kit_consultor/03` con línea base del Productor A y meta (P-24) |
 | T-010 | Crear el repositorio y la CI mínima | IN_PROGRESS | T-001 | Repositorio con esta carpeta (ADR-0020), rama principal protegida y CI que corre pruebas y lint. La CI se activa con el primer proyecto de Node (T-100) |
+| T-011 | Llevar a la plataforma los hallazgos del caso Productor A | REVIEW | T-007 | H-01 a H-15 en `BUSINESS_RULES.md`, `REQUIREMENTS.md`, `DOMAIN_MODEL.md`, `DATABASE.md`, `SECURITY.md` y ADR, con la decisión de Fernando (2026-10-19) y su origen marcado |
 
 ## 2. Fundaciones técnicas (sin lógica de negocio)
 
@@ -36,7 +37,7 @@ Las decisiones pendientes (P-xx) están en `PROGRESS.md`. Una tarea BLOCKED indi
 | T-103 | Proyecciones con aplicación incremental y reconstrucción determinista (ADR-0013) | TODO | T-102 |
 | T-104 | Máquina de estados del lote configurable (ADR-0009) | TODO | T-102 |
 | T-105 | Sincronización: cola del navegador, nodo a nodo y paquete por archivo | TODO | T-103 |
-| T-106 | Respaldo automático, manual y restauración probada en local (fuera del sitio con el cliente, P-05) | TODO | T-100 |
+| T-106 | Respaldo automático, manual y restauración probada en local, y prueba de apagón durante una escritura (H-12; fuera del sitio con el cliente, P-05) | TODO | T-100 |
 | T-107 | Infraestructura de pruebas: unitarias, integración con base real, convergencia de dos nodos | TODO | T-100 |
 | T-108 | Empaquetado e instalación en Windows sin conocimientos técnicos | TODO | T-001 |
 | T-109 | Identidad local: usuarios, roles, permisos, sesiones (P-40) | TODO | T-100 |
@@ -49,12 +50,12 @@ Las decisiones pendientes (P-xx) están en `PROGRESS.md`. Una tarea BLOCKED indi
 | T-121 | Variedades y material vegetal (UC-CAT-01, 02) | TODO | T-103 |
 | T-122 | Lotes: planificar, sembrar, etapas, cancelar (UC-LOT-01 a 03, 07) | TODO | T-104, T-120, T-121 |
 | T-123 | Charolas e identificadores (UC-IDE-01, 02) | TODO | T-122 |
-| T-124 | Transferencias, pérdidas y división con genealogía (UC-LOT-04 a 06) | TODO | T-123 |
-| T-125 | Labores con intervalo de seguridad (UC-LAB-01, 02) | TODO | T-122 |
+| T-124 | Transferencias, pérdidas, división y resiembra con genealogía (UC-LOT-04 a 06, 09) | TODO | T-123 |
+| T-125 | Catálogo de productos y labores con intervalo de seguridad (UC-CAT-03, UC-LAB-01, 02) | TODO | T-122 |
 | T-126 | Inspección, cuarentena y calidad (UC-CAL-01 a 04) | TODO | T-122 |
-| T-127 | Entregas y cierre (UC-ENT-01, 02) | TODO | T-125, T-126 |
+| T-127 | Entregas de varios lotes por pedido y cierre (UC-ENT-01, 02) | TODO | T-125, T-126 |
 | T-128 | Trazabilidad hacia atrás y hacia adelante (UC-TRZ-01, 02, UC-LOT-08) | TODO | T-124, T-127 |
-| T-129 | Reportes y exportación CSV (UC-REP-01 a 03) | TODO | T-128 |
+| T-129 | Reportes, ficha de lote y exportación CSV (UC-REP-01 a 04) | TODO | T-128 |
 | T-130 | Importación de Excel con vista previa (UC-INT-01) | TODO | T-122, P-30 |
 | T-131 | Etiquetas imprimibles (UC-IDE-03) | TODO | T-123 |
 | T-132 | Interfaz de captura para PC y teléfono | TODO | T-105, T-109 |

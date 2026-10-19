@@ -59,7 +59,7 @@ Ver `DOMAIN_MODEL.md`, mapa de contextos.
 4. Un evento recibido por sincronización que ya no es válido se guarda en CONFLICTO.
 5. Reconstruir desde cero debe producir exactamente el mismo estado (prueba obligatoria).
 
-Riesgo conocido: la reconstrucción completa en cada evento atrasado es suficiente para el volumen de un productor (cientos de lotes por temporada), pero hay que medirla en la PC mínima (T-008) y, si hace falta, reconstruir solo desde el punto afectado.
+Riesgo conocido: la reconstrucción completa en cada evento atrasado es suficiente para el volumen de un productor (cientos de lotes por temporada), pero hay que medirla en la PC mínima (T-008) y, si hace falta, reconstruir solo desde el punto afectado. En el caso Productor A capturar con días de atraso es la norma (H-02), así que T-008 mide una semana de eventos atrasados.
 
 ## Transacciones y concurrencia
 
@@ -80,11 +80,11 @@ Identificadores abstractos (ADR-0014). Mínimo soportado: etiqueta impresa con c
 
 ## Configuración
 
-Archivo de configuración por productor: nombre, código de nodo, prefijo de folio, nombres de niveles, transiciones de etapa, permisos, usuarios iniciales, clave de sincronización (ADR-0015). Los secretos no se versionan.
+Archivo de configuración por productor: nombre, código de nodo, prefijo de folio y si lleva año, rango de folios del nodo (ADR-0010), nombres de niveles, transiciones de etapa, permisos, usuarios iniciales, clave de sincronización (ADR-0015). Los secretos no se versionan.
 
 ## Respaldos
 
-Respaldo automático diario del archivo de base de datos con la API de respaldo del motor, y respaldo manual desde la interfaz. Restaurar y respaldar fuera del sitio: P-05.
+Respaldo automático diario del archivo de base de datos con la API de respaldo del motor, y respaldo manual desde la interfaz. La base local se configura para sobrevivir cortes de luz sin no-break (H-12). Restaurar y respaldar fuera del sitio: P-05.
 
 ## Observabilidad
 
