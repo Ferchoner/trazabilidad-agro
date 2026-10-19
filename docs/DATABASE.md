@@ -42,7 +42,7 @@ Estado: borrador del Sprint 0 (T-004). Nombres en inglés (P-32). Se aprueba jun
 
 ### 3.2 `meta`
 
-Clave-valor: consecutivos de folio por año, último orden aplicado, versión del esquema.
+Clave-valor: bloques de folio asignados por dispositivo y siguiente folio de cada bloque (ADR-0010), último orden aplicado, versión del esquema.
 
 ### 3.3 `sync_peers`, `sync_log`
 
@@ -57,13 +57,13 @@ Par, último `seq` enviado, última sincronización; bitácora de cada intercamb
 Variedad con nombre único; material con variedad, origen, proveedor, documento, fecha y cantidad.
 
 ### 4.3 `lots`
-Campos del aggregate `Lot` (`DOMAIN_MODEL.md`). `folio` único. Restricciones: cantidades no negativas; `current_qty = initial_qty - lost_qty - dispatched_qty - split_qty`.
+Campos del aggregate `Lot` (`DOMAIN_MODEL.md`). `folio` único. Restricciones: cantidades no negativas; `current_qty = initial_qty + reseed_in_qty - lost_qty - dispatched_qty - split_qty - reseed_out_qty`.
 
 ### 4.4 `trays`
 `id` determinista por código, `code` único, `cavities`, `lot_id` (nulo si libre), `location_id`.
 
 ### 4.5 `lot_genealogy`
-`parent_id`, `child_id`, `event_id`, `kind` (SPLIT; MERGE pendiente P-15), `quantity`.
+`parent_id`, `child_id`, `event_id`, `kind` (SPLIT, RESEED; MERGE pendiente P-15), `quantity`. En RESEED el padre es el lote que aporta y el hijo el que recibe (BR-CHA-04).
 
 ### 4.6 `lot_events`
 Vínculo lote–evento con `via` (DIRECT, LOCATION, GENEALOGY), para la trazabilidad hacia atrás.
@@ -72,10 +72,10 @@ Vínculo lote–evento con `via` (DIRECT, LOCATION, GENEALOGY), para la trazabil
 `code` único, `technology`, `entity_type`, `entity_id`.
 
 ### 4.8 `applications`
-Por evento y lote: producto, ingrediente, dosis, intervalo, fecha y fecha libre.
+Por evento y lote: producto, ingrediente, dosis, intervalo (nulo si es desconocido), fecha y fecha libre. Catálogo `products` con intervalo opcional (BR-LAB-02).
 
 ### 4.9 `dispatches`
-Por evento: lote, cliente, pedido, cantidad, fecha.
+Por evento: cliente, pedido y fecha; `dispatch_lines` con lote y cantidad por línea (BR-ENT-02).
 
 ## 5. Pendientes
 

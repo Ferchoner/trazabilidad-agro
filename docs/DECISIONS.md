@@ -29,7 +29,7 @@ Una decisión en estado Propuesta necesita aprobación humana antes de implement
 | ADR-0007 | Stack tecnológico: TypeScript, NestJS, PostgreSQL y SQLite | Aceptada |
 | ADR-0008 | Servidor externo con una base por productor y nodo local opcional | Aceptada |
 | ADR-0009 | Estado del lote en tres ejes | Propuesta |
-| ADR-0010 | Identidad: UUID interno y folio legible por nodo | Propuesta |
+| ADR-0010 | Identidad: UUID interno y folio corto con bloques por dispositivo | Aceptada |
 | ADR-0011 | Correcciones por anulación, no por edición | Propuesta |
 | ADR-0012 | Labores sobre una ubicación se ligan a los lotes presentes | Propuesta |
 | ADR-0013 | Orden determinista de eventos y conflictos visibles | Propuesta |
@@ -147,19 +147,19 @@ Reemplazada parcialmente por ADR-0002 a ADR-0006 (2026-10-18). Sigue vigente par
 - **Contexto:** Doc 06 de origen lista 15 estados que mezclan etapa agrícola, retención y situación comercial (hueco 7). EN_CUARENTENA y PERDIDO ocurren en cualquier etapa; RESERVADO y PARCIALMENTE_VENDIDO dependen de cantidades.
 - **Decisión propuesta:** (1) **Etapa agrícola**: PLANIFICADO → PREPARADO → SEMBRADO → GERMINACION → CRECIMIENTO → DESARROLLO → CONTROL_CALIDAD → LISTO_VENTA → CERRADO, más los terminales PERDIDO y CANCELADO; transiciones configurables por productor. (2) **Retención**: LIBRE o EN_CUARENTENA, independiente de la etapa. (3) **Situación comercial**: DISPONIBLE, RESERVADO, PARCIALMENTE_VENDIDO o VENDIDO, calculada a partir de cantidades, nunca asignada a mano. Códigos sin acento; etiquetas traducibles.
 - **Alternativas consideradas:** Un solo estado con 15 valores; obliga a perder la etapa al entrar en cuarentena.
-- **Consecuencias:** Los criterios de paso entre GERMINACION, CRECIMIENTO y DESARROLLO los define cada productor (P-17).
+- **Consecuencias:** Los criterios de paso entre GERMINACION, CRECIMIENTO y DESARROLLO los define cada productor (P-17). Evidencia del caso Productor A (H-09): usa tres etapas con nombres propios y pasa a listo sin control de calidad formal, así que la configuración debe permitir menos etapas, nombres propios y la transición directa a LISTO_VENTA.
 - **Estado:** Propuesta (P-10).
 
 ---
 
-## ADR-0010 — Identidad: UUID interno y folio legible por nodo
+## ADR-0010 — Identidad: UUID interno y folio corto con bloques por dispositivo
 
-- **Fecha:** 2026-10-18
-- **Contexto:** El folio consecutivo FR-2026-00017 choca con la captura sin conexión: dos equipos pueden generar el mismo (hueco 10).
-- **Decisión propuesta:** Cada entidad tiene un UUID interno. El folio legible lo genera el nodo que crea el lote con el formato `PREFIJO-AÑO-NODO-CONSECUTIVO` (p. ej. FR-2026-P1-0017); los sublotes agregan sufijo (-A, -B). Al migrar desde Excel se conserva el folio del productor.
-- **Alternativas consideradas:** Folio asignado al sincronizar (el lote no tiene folio para etiquetar mientras está sin conexión); rangos reservados por dispositivo (requiere administración).
-- **Consecuencias:** El formato exacto y si el código de nodo es visible para el productor quedan en P-11.
-- **Estado:** Propuesta (P-11).
+- **Fecha:** 2026-10-18; revisada el 2026-10-19 con el caso Productor A.
+- **Contexto:** El folio consecutivo FR-2026-00017 choca con la captura sin conexión: dos equipos pueden generar el mismo (hueco 10). En el caso Productor A el folio debe existir al sembrar, en un teléfono sin señal, y se escribe a mano en una estaca, por lo que debe ser corto (L-0812) (hallazgos H-03 y H-04 de T-007).
+- **Decisión:** Cada entidad tiene un UUID interno. El folio legible es corto: prefijo del productor y consecutivo (p. ej. L-0812); el año es opcional por configuración (ADR-0015) y el nodo no se muestra. Los consecutivos se reparten en bloques: cada nodo recibe un rango y cada dispositivo recibe un bloque dentro del rango de su nodo antes de salir sin conexión, así el folio es definitivo desde la siembra. Los sublotes agregan sufijo (-A, -B). Al migrar desde Excel se conserva el folio del productor y los bloques nuevos empiezan después de su último consecutivo.
+- **Alternativas consideradas:** Folio por nodo `PREFIJO-AÑO-NODO-CONSECUTIVO` (largo para escribir a mano y muestra el nodo); folio provisional que el nodo confirma al sincronizar (el provisional ya quedó escrito en la estaca y en papel); folio asignado al sincronizar (el lote no tiene folio mientras está sin conexión).
+- **Consecuencias:** Hay que administrar bloques: tamaño del bloque y qué hace un dispositivo que agota el suyo sin conexión quedan en P-11. Los folios de un mismo día pueden no ser consecutivos entre dispositivos.
+- **Estado:** Aceptada (2026-10-19, Fernando, con el caso Productor A; se confirma con el primer productor real).
 
 ---
 
@@ -180,7 +180,7 @@ Reemplazada parcialmente por ADR-0002 a ADR-0006 (2026-10-18). Sigue vigente par
 - **Contexto:** En invernadero el riego, la fertilización y muchas aplicaciones se hacen por sector o mesa, no por lote.
 - **Decisión propuesta:** Riego, fertilización, aplicación e inspección pueden registrarse sobre un lote o sobre una ubicación. Sobre una ubicación, el evento queda ligado a todos los lotes activos de esa ubicación y sus niveles inferiores en ese momento, para la trazabilidad hacia atrás y para el intervalo de seguridad.
 - **Alternativas consideradas:** Obligar a capturar la labor lote por lote; multiplica la captura y la hace menos confiable.
-- **Consecuencias:** La ubicación de cada charola en el tiempo debe ser exacta (transferencias registradas).
+- **Consecuencias:** La ubicación de cada charola en el tiempo debe ser exacta (transferencias registradas, BR-LOT-11). Evidencia del caso Productor A (H-05): las aplicaciones se registran por sector, así que la labor se acepta en cualquier nivel de la jerarquía.
 - **Estado:** Propuesta.
 
 ---
@@ -191,7 +191,7 @@ Reemplazada parcialmente por ADR-0002 a ADR-0006 (2026-10-18). Sigue vigente par
 - **Contexto:** Eventos capturados sin conexión llegan tarde y en otro orden. La exploración técnica encontró que eventos con la misma hora se aplicaban antes que sus dependencias (un sector antes que su invernadero).
 - **Decisión propuesta:** Las proyecciones se construyen en orden (hora del dispositivo, nodo de origen, secuencia del dispositivo). Cada dispositivo garantiza horas y secuencias crecientes. Un evento que llega después y ya no es válido (p. ej. pérdida mayor a lo que queda) se guarda en estado CONFLICTO, visible para revisión, sin aplicarse a medias ni perderse. Dos nodos con los mismos eventos llegan al mismo estado.
 - **Alternativas consideradas:** Último en llegar gana; sobrescritura ciega prohibida por doc 09 de origen.
-- **Consecuencias:** El reloj de los dispositivos importa; se registra hora del dispositivo y del servidor para detectar desfases. La resolución de un conflicto es una acción de usuario con permiso (P-12).
+- **Consecuencias:** El reloj de los dispositivos importa; se registra hora del dispositivo y del servidor para detectar desfases. La resolución de un conflicto es una acción de usuario con permiso (P-12). En el caso Productor A capturar con días de atraso es la norma (H-02): la fecha de la operación se guarda aparte (BR-EVT-06) y T-008 mide la reconstrucción con una semana de atraso.
 - **Estado:** Propuesta (P-12).
 
 ---

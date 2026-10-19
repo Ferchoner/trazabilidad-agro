@@ -27,19 +27,19 @@ Eventos: `LocationCreated`. Pendiente: renombrar o desactivar ubicaciones.
 
 ## Agronomy Catalog
 
-`Variety` (id, name). `PlantMaterial` (id, varietyId, origin, supplier, phytosanitaryDocument, receivedAt, quantity).
+`Variety` (id, name). `PlantMaterial` (id, varietyId, origin, supplier, phytosanitaryDocument, receivedAt, quantity). `Product` (id, name, activeIngredient, safetyIntervalDays opcional).
 
-Eventos: `VarietyCreated`, `PlantMaterialRegistered`.
+Eventos: `VarietyCreated`, `PlantMaterialRegistered`, `ProductRegistered`.
 
 ## Lots
 
-`Lot` (id, folio, varietyId, plantMaterialId, parentId, stage, hold, plannedQty, initialQty, currentQty, lostQty, dispatchedQty, splitQty, sowingDate, locationId, safetyIntervalUntil, version).
+`Lot` (id, folio, varietyId, plantMaterialId, parentId, stage, hold, plannedQty, initialQty, currentQty, lostQty, dispatchedQty, splitQty, reseedInQty, reseedOutQty, sowingDate, locationId, safetyIntervalUntil, safetyIntervalUnknown, version).
 
 `Tray` (id determinista por código, code, cavities, lotId, locationId).
 
-Invariantes: BR-LOT-01 a BR-LOT-10, BR-CHA-01 a BR-CHA-03.
+Invariantes: BR-LOT-01 a BR-LOT-11, BR-CHA-01 a BR-CHA-04.
 
-Eventos: `LotPlanned`, `LotSown`, `LotStageChanged`, `LotTransferred`, `LotSplit`, `LossRecorded`, `LotCancelled`, `LotClosed`.
+Eventos: `LotPlanned`, `LotSown`, `LotStageChanged`, `LotTransferred`, `LotSplit`, `LotReseeded` (lote que recibe, lote que aporta, charolas, cantidad), `LossRecorded`, `LotCancelled`, `LotClosed`.
 
 ## Identification
 
@@ -49,7 +49,7 @@ Eventos: `IdentifierAssigned`. Los folios y códigos de charola y ubicación se 
 
 ## Crop Operations
 
-Eventos: `IrrigationRecorded`, `FertilizationRecorded`, `ApplicationRecorded` (con intervalo de seguridad). Sobre lote o ubicación (ADR-0012).
+Eventos: `IrrigationRecorded`, `FertilizationRecorded`, `ApplicationRecorded` (producto del catálogo; intervalo de seguridad conocido o desconocido, BR-LAB-02). Sobre lote o ubicación, en cualquier nivel (ADR-0012).
 
 ## Quality
 
@@ -57,7 +57,7 @@ Eventos: `InspectionRecorded`, `QuarantineStarted`, `QuarantineReleased`, `Quali
 
 ## Dispatch
 
-Eventos: `DispatchRecorded` (cliente, pedido, cantidad). Pedidos y reservas: Fase 4.
+Eventos: `DispatchRecorded` (cliente, pedido, fecha y líneas de lote y cantidad, BR-ENT-02). Pedidos como entidad y reservas: Fase 4.
 
 ## Sync
 
@@ -79,6 +79,7 @@ type             p. ej. LotSown
 entityType       lot | location | variety | material | tray | event
 entityId         UUID
 occurredAt       hora del dispositivo (UTC)
+operatedAt       fecha de la operación si no es la del momento (BR-EVT-06); vacía si se desconoce
 recordedAt       hora del nodo que lo recibió (UTC)
 userId
 deviceId
@@ -91,4 +92,4 @@ hash             huella del contenido para idempotencia
 status           APPLIED | CONFLICT | VOIDED
 ```
 
-Campos respecto al doc 06 de origen: se agregan `recordedAt`, `nodeOrigin`, `deviceSeq`, `payloadVersion`, `hash` y `status`; `sync_status` se reemplaza por `status` y por el registro de pares de sincronización.
+Campos respecto al doc 06 de origen: se agregan `recordedAt`, `operatedAt`, `nodeOrigin`, `deviceSeq`, `payloadVersion`, `hash` y `status`; `sync_status` se reemplaza por `status` y por el registro de pares de sincronización.

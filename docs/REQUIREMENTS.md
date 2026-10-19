@@ -72,9 +72,9 @@ Propuesta inicial; la matriz final es por productor (P-18).
 
 | Operación | Admin | Producción | Capturista | Calidad | Ventas | Consulta |
 |---|---|---|---|---|---|---|
-| Catálogos y ubicaciones | ✓ | ✓ | | | | |
+| Catálogos (incluye productos) y ubicaciones | ✓ | ✓ | | | | |
 | Crear lote, siembra, etapa, división, cancelación | ✓ | ✓ | | | | |
-| Riego, fertilización, pérdida, transferencia | ✓ | ✓ | ✓ | | | |
+| Riego, fertilización, pérdida, transferencia, resiembra | ✓ | ✓ | ✓ | | | |
 | Aplicación fitosanitaria | ✓ | ✓ | | | | |
 | Inspección | ✓ | ✓ | ✓ | ✓ | | |
 | Cuarentena | ✓ | ✓ | | ✓ | | |
@@ -93,29 +93,31 @@ Cada caso de uso se completa con criterios de aceptación detallados en T-002. L
 - **UC-UBI-01** Crear ubicación. Respeta la jerarquía (un sector cuelga de un invernadero); código único.
 - **UC-CAT-01** Crear variedad. Nombre único sin distinguir mayúsculas.
 - **UC-CAT-02** Registrar material vegetal: variedad, origen (planta madre, estolón, in vitro, proveedor), proveedor, documento fitosanitario, fecha de recepción. Lo que falte queda PENDIENTE.
+- **UC-CAT-03** Registrar producto fitosanitario: nombre, ingrediente activo e intervalo de seguridad en días; el intervalo puede quedar PENDIENTE (BR-LAB-02).
 
 ### 5.2 Lotes
 
 - **UC-LOT-01** Planificar lote: folio (ADR-0010), variedad, material, cantidad planeada, ubicación.
 - **UC-LOT-02** Sembrar: cantidad, mesa, charolas con cavidades. La cantidad no supera las cavidades; una charola ocupada no se asigna.
 - **UC-LOT-03** Cambiar etapa según transiciones permitidas.
-- **UC-LOT-04** Transferir el lote o algunas charolas a otra ubicación.
+- **UC-LOT-04** Transferir el lote o algunas charolas a otra ubicación, capturando lote y mesa destino (BR-LOT-11).
 - **UC-LOT-05** Dividir en sublotes con cantidad y charolas; el padre conserva su historia y los hijos la heredan en la trazabilidad.
 - **UC-LOT-06** Registrar pérdida con cantidad y causa; no supera lo que queda.
 - **UC-LOT-07** Cancelar un lote no sembrado.
 - **UC-LOT-08** Consultar lote: datos, charolas, genealogía, historial, aplicaciones y entregas.
+- **UC-LOT-09** Registrar resiembra: lote que recibe, lote que aporta, charolas y cantidad (BR-CHA-04).
 
 ### 5.3 Labores y calidad
 
 - **UC-LAB-01** Registrar riego o fertilización sobre lote o ubicación (ADR-0012).
-- **UC-LAB-02** Registrar aplicación con producto, ingrediente activo, dosis, motivo e intervalo de seguridad.
+- **UC-LAB-02** Registrar aplicación con producto del catálogo, dosis y motivo; si el producto no tiene intervalo, se advierte y se registra (BR-LAB-02).
 - **UC-CAL-01** Registrar inspección con resultado (OK, observación, plaga, enfermedad) y nota.
 - **UC-CAL-02** Poner en cuarentena con motivo; **UC-CAL-03** liberar.
 - **UC-CAL-04** Control de calidad: aprobado pasa a LISTO_VENTA, rechazado regresa a DESARROLLO.
 
 ### 5.4 Entregas
 
-- **UC-ENT-01** Registrar entrega: cliente, pedido (texto), cantidad. Solo de un lote LISTO_VENTA, libre y fuera de intervalo de seguridad.
+- **UC-ENT-01** Registrar entrega de un pedido: cliente, pedido (texto), fecha y una línea por lote con su cantidad. Cada lote debe estar LISTO_VENTA, libre y fuera de intervalo de seguridad (BR-ENT-02).
 - **UC-ENT-02** Cerrar lote; el sobrante cuenta como merma con causa.
 
 ### 5.5 Trazabilidad y reportes
@@ -125,6 +127,7 @@ Cada caso de uso se completa con criterios de aceptación detallados en T-002. L
 - **UC-REP-01** Disponibilidad por variedad y etapa, separando cuarentena e intervalo de seguridad.
 - **UC-REP-02** Mermas por lote y por causa.
 - **UC-REP-03** Exportar lotes, disponibilidad, mermas y eventos a CSV para Excel.
+- **UC-REP-04** Ficha de lote para el cliente del productor, imprimible: material vegetal y su origen, siembra y ubicaciones, labores (directas y por ubicación), inspecciones, cuarentenas y entregas. Decidido por Fernando el 2026-10-19 con el caso Productor A (hallazgo H-14, P-23).
 
 ### 5.6 Identificación
 
@@ -134,7 +137,7 @@ Cada caso de uso se completa con criterios de aceptación detallados en T-002. L
 
 ### 5.7 Integración
 
-- **UC-INT-01** Importar el registro de lotes desde Excel: vista previa con errores y advertencias por fila; solo se importa al confirmar; las filas con error no se importan (P-30).
+- **UC-INT-01** Importar el registro de lotes desde Excel: vista previa con errores y advertencias por fila; solo se importa al confirmar; las filas con error no se importan (P-30). Las mermas sin causa siguen BR-INT-05.
 
 ### 5.8 Sincronización y operación
 
@@ -181,6 +184,8 @@ Reclamo de un cliente → pedido → lote → material y labores (hacia atrás) 
 | E-09 | Entidad inexistente |
 | E-10 | Ubicación fuera de jerarquía |
 | E-11 | Archivo de importación sin columnas obligatorias |
+| E-12 | Resiembra que supera las cavidades vacías o la cantidad del lote que aporta |
+| E-13 | Fecha de la operación futura o anterior a la siembra (BR-EVT-06) |
 
 ## 8. Dependencias externas
 
@@ -198,10 +203,12 @@ Ninguna en tiempo de ejecución: sin Internet, sin servicios en la nube. Navegad
 | Convergencia | Dos nodos con los mismos eventos tienen el mismo estado | ADR-0013 |
 | Reconstrucción | Las proyecciones se reconstruyen desde los eventos con un comando | ADR-0005 |
 | Instalación | Sin Docker ni servidor; una carpeta o instalador en la PC del productor | ADR-0007, ADR-0008 |
+| Cortes de luz | Un apagón durante una escritura no corrompe la base local ni pierde eventos confirmados; respaldo diario automático | Caso Productor A, H-12; T-106 |
+| Captura atrasada | Registrar una semana de eventos atrasados reconstruye proyecciones en un tiempo aceptable en la PC mínima (medir en T-008) | Caso Productor A, H-02; ADR-0013 |
 
 ### 9.2 Pendientes
 
-- Especificación de la PC mínima, sistema operativo y navegadores (P-04).
+- PC mínima de referencia para T-008: equipo de 2016 con Windows 10, 4 GB de RAM y disco mecánico, compartido con otro uso (caso Productor A, hallazgo H-11; ficticio, se confirma con el primer cliente). Navegadores mínimos: P-04.
 - Volumen esperado: lotes por temporada, eventos por día, usuarios simultáneos (P-04).
 - Tiempo de respuesta en la PC mínima (P-04).
 - Respaldo fuera del sitio y su frecuencia (P-05).
