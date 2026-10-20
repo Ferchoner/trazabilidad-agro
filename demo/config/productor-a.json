@@ -1,0 +1,81 @@
+{
+  "_comment": "Configuración del caso Productor A (datos ficticios, ADR-0017). Sale de 'Configuración inicial - Productor A.xlsx' (T-301). Lo propio del productor vive aquí y no en el código (ADR-0015). Sin PIN ni contraseñas (P-40).",
+  "producer": {
+    "name": "Productor A (ficticio)",
+    "nodeCode": "P1",
+    "folioPrefix": "L",
+    "folioDigits": 4,
+    "lastExcelFolio": 820,
+    "timeZone": "America/Mexico_City"
+  },
+  "levels": {
+    "CENTER": "Centro de producción",
+    "GREENHOUSE": "Invernadero",
+    "SECTOR": "Sector",
+    "TABLE": "Tabla"
+  },
+  "stages": [
+    {
+      "code": "PLANIFICADO",
+      "label": "Planificado",
+      "next": ["SEMBRADO", "CANCELADO"],
+      "setBy": []
+    },
+    { "code": "SEMBRADO", "label": "Sembrado", "next": ["ENRAIZADO"], "setBy": [] },
+    {
+      "code": "ENRAIZADO",
+      "label": "Enraizado",
+      "next": ["LISTO_VENTA"],
+      "setBy": ["ADMIN", "PRODUCCION"],
+      "criterion": "Unas 3 semanas desde la siembra (D-02)"
+    },
+    {
+      "code": "LISTO_VENTA",
+      "label": "Listo",
+      "next": ["CERRADO"],
+      "setBy": ["ADMIN"],
+      "criterion": "8 a 10 semanas, a criterio del dueño (D-04)"
+    },
+    { "code": "CERRADO", "label": "Cerrado", "next": [], "setBy": [] },
+    { "code": "PERDIDO", "label": "Perdido", "next": [], "setBy": [] },
+    { "code": "CANCELADO", "label": "Cancelado", "next": [], "setBy": [] }
+  ],
+  "roles": {
+    "ADMIN": { "label": "Administrador", "can": ["*"] },
+    "OFICINA": {
+      "label": "Oficina",
+      "can": ["LotPlanned", "LotSown", "LossRecorded", "LotTransferred", "FertilizationRecorded"]
+    },
+    "PRODUCCION": {
+      "label": "Producción",
+      "can": [
+        "LotPlanned",
+        "LotSown",
+        "LotStageChanged",
+        "LotTransferred",
+        "LossRecorded",
+        "LotCancelled",
+        "ApplicationRecorded",
+        "FertilizationRecorded",
+        "InspectionRecorded",
+        "QuarantineStarted"
+      ]
+    },
+    "CAPTURISTA": { "label": "Capturista", "can": ["LossRecorded", "LotTransferred"] },
+    "VENTAS": { "label": "Ventas", "can": ["DispatchRecorded", "LotClosed"] }
+  },
+  "users": [
+    { "id": "dueno", "name": "Dueño y director", "roles": ["ADMIN"] },
+    { "id": "oficina", "name": "Encargada de oficina", "roles": ["OFICINA", "VENTAS"] },
+    { "id": "jefe", "name": "Jefe de invernadero", "roles": ["PRODUCCION"] },
+    { "id": "campo", "name": "Trabajador de campo", "roles": ["CAPTURISTA"] }
+  ],
+  "lossCauses": ["No pegó", "Daño mecánico", "Plaga o enfermedad", "Descarte de calidad"],
+  "importLossCause": "No registrada (importación)",
+  "inspectionResults": {
+    "OK": "Sin problemas",
+    "OBSERVACION": "Observación",
+    "PLAGA": "Plaga",
+    "ENFERMEDAD": "Enfermedad"
+  }
+}

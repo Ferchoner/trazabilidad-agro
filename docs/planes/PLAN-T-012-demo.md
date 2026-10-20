@@ -1,6 +1,6 @@
 # PLAN T-012 — Demo de lotes, estados e inventario para futuros clientes
 
-Estado: **para aprobación de Fernando**. No se escribe código hasta aprobarlo (`AI_WORKFLOW.md`).
+Estado: **aprobado por Fernando el 2026-10-20**, con las decisiones por defecto del §5 (`AI_WORKFLOW.md`).
 Decisión de base: ADR-0021 (NestJS local, sin hosting hasta presentarlo). Datos ficticios del caso Productor A (ADR-0017).
 
 ## 1. Objetivo
