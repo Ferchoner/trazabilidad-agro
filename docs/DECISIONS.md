@@ -40,6 +40,7 @@ Una decisión en estado Propuesta necesita aprobación humana antes de implement
 | ADR-0018 | Esqueleto de gobierno tomado de base-shop | Aceptada |
 | ADR-0019 | Hosting y servidor se deciden con el primer cliente | Aceptada |
 | ADR-0020 | Un solo repositorio para la plataforma | Aceptada |
+| ADR-0021 | Demo para futuros clientes, separado del producto | Aceptada |
 
 ---
 
@@ -266,3 +267,20 @@ Reemplazada parcialmente por ADR-0002 a ADR-0006 (2026-10-18). Sigue vigente par
 - **Alternativas consideradas:** Repositorios separados para API, interfaz y contratos; descartada porque obliga a versionar y publicar el contrato de eventos entre repositorios para un solo equipo. Un repositorio con el kit en Office; descartada por ADR-0002.
 - **Consecuencias:** Un segundo repositorio solo se justifica para una aplicación nativa o un conector ERP grande (Fase 5). La CI mínima (T-010) se activa cuando T-100 cree el primer proyecto de Node; la protección de `main` se configura en GitHub.
 - **Estado:** Aceptada (2026-10-19, Fernando).
+
+---
+
+## ADR-0021 — Demo para futuros clientes, separado del producto
+
+- **Fecha:** 2026-10-19
+- **Contexto:** Fernando pidió el 2026-10-19 un demo que los futuros clientes puedan probar: registrar lotes y ver sus estados y el inventario. Choca con dos reglas vigentes: no hay código de producto hasta cerrar el Sprint 0 (`PROGRESS.md`) y el hosting se decide con el primer cliente (ADR-0019).
+- **Decisión:**
+  1. El demo es material de ventas, no el producto ni la prueba técnica T-008. Su código no se copia al producto sin pasar por T-101.
+  2. Usa el stack de ADR-0007: TypeScript, NestJS y SQLite en el entorno local, con la interfaz web servida por la misma aplicación (como el nodo local de `ARCHITECTURE.md`). Corre en la laptop del consultor y se abre en el navegador de la PC, teléfono o tablet de la misma red.
+  3. No se publica en ningún hosting. Cuando el demo esté probado y listo para presentarse, Fernando lo presenta y entonces se decide si se lleva a un hosting para que los clientes lo prueben solos (ADR-0019).
+  4. Aplica las reglas ya escritas: eventos inmutables con UUID e idempotencia y estado derivado (ADR-0005), orden determinista y CONFLICTO visible (ADR-0013), anulación en lugar de edición (ADR-0011), estado del lote en tres ejes (ADR-0009) con las etapas configuradas del Productor A (ADR-0015), jerarquía Centro → Invernadero → Sector → Mesa (ADR-0003), labores por ubicación ligadas a los lotes presentes (ADR-0012), folio corto (ADR-0010), fecha de la operación aparte de la de captura (BR-EVT-06) y las reglas BR-LOT, BR-LAB, BR-CAL y BR-ENT que toca. Lo que aún es Propuesta se muestra como propuesta.
+  5. Usa los datos ficticios del caso Productor A, marcados como tales en pantalla (ADR-0017).
+  6. El código vive en este repositorio en `demo/`, fuera de `apps/` y `packages/`, con sus propias pruebas, incluida la de reconstrucción. La guía del demo va en Word (ADR-0016), en la carpeta compartida.
+- **Alternativas consideradas:** Página que corre entera en el navegador y se comparte por enlace (el cliente la prueba solo, pero no usa NestJS y adelanta la decisión de dónde publicarla); servidor público en la nube (obliga a elegir proveedor antes del primer cliente, ADR-0019); esperar al MVP (no hay nada que mostrar en ventas hasta entonces); dejar el demo fuera de Git como `spikes/` (ADR-0020), descartada porque el demo se mantiene y se prueba, no se desecha.
+- **Consecuencias:** El cliente no lo prueba solo hasta decidir el hosting; mientras tanto lo presenta el consultor. El demo no demuestra servidor PostgreSQL, sincronización entre equipos, captura sin señal ni rendimiento en la PC mínima; eso sigue en T-008. Simplificaciones del demo, no del producto: un solo nodo y un solo bloque de folios (P-11), selección de usuario sin PIN (P-40), proyecciones en memoria reconstruidas al arrancar, sin charolas individuales (el Productor A traza por lote, P-14) y botón para regresar a los datos iniciales. Cada cambio de reglas del producto se lleva al demo a mano mientras sean código separado. Amplía ADR-0020 con la carpeta `demo/`.
+- **Estado:** Aceptada (2026-10-19, Fernando: NestJS local, el hosting se decide después de presentarlo).

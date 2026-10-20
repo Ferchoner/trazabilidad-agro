@@ -75,3 +75,11 @@ Las decisiones pendientes (P-xx) están en `PROGRESS.md`. Una tarea BLOCKED indi
 | T-400 | Escenario de aceptación Productor A automatizado (importación, ciclo, brote, recall, conflicto sin conexión) | TODO | T-128, T-130 |
 | T-401 | Prueba de rendimiento en la PC mínima con el volumen de P-04 | TODO | T-008, P-04 |
 | T-402 | Despliegue del servidor para el primer cliente | DEFERRED (ADR-0019) | P-07 |
+
+## 6. Demo para futuros clientes
+
+No es código de producto (ADR-0021).
+
+| ID | Tarea | Estado | Depende de | Criterios de aceptación |
+|---|---|---|---|---|
+| T-012 | Demo de lotes, estados e inventario para futuros clientes (plan: `planes/PLAN-T-012-demo.md`) | REVIEW (falta la presentación de Fernando) | ADR-0021 | Arranca en local con NestJS y SQLite con un solo comando y sin Internet, y se abre en el navegador de la misma red; carga el caso Productor A (ficticio, marcado en pantalla) con sus 2 invernaderos, 4 sectores, 12 mesas, 3 variedades, 2 proveedores y los lotes del Excel 2026; registra un lote nuevo (planificado o sembrado) con folio corto, variedad, material, mesa, charolas, cavidades y fecha de la operación, y rechaza más plántulas que cavidades (BR-LOT-03); cambia etapa solo por transiciones configuradas (ADR-0009), registra pérdida con causa (BR-LOT-05), transferencia de mesa (BR-LOT-11), cuarentena y liberación (BR-CAL-01, 02) y entrega (BR-ENT-01); muestra el estado del lote en sus tres ejes, el inventario por variedad y etapa y por ubicación, y la historia de eventos del lote, sin editar ni borrar eventos; permite regresar a los datos iniciales; pruebas del dominio en verde, incluida la de reconstrucción; guía para el cliente en Word (ADR-0016) |

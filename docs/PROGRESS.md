@@ -29,6 +29,8 @@ Sprint 0 — Discovery and Architecture, desde el 2026-10-18 (`SPRINT.md`). Sin 
 
 ## Review
 
+- T-012 Demo para futuros clientes en `demo/`: NestJS 11 y SQLite local con los datos ficticios del Productor A; 33 pruebas en verde y recorrido en navegador de PC y teléfono. Guía en Word en la carpeta compartida (`demo/`). Siguiente paso: Fernando lo presenta y se decide si va a un hosting (ADR-0021).
+
 - T-011 Hallazgos H-01 a H-15 del caso Productor A llevados a reglas, casos de uso, modelo y ADR-0010 (aceptada), con las decisiones recomendadas que Fernando aprobó el 2026-10-19. Se confirman con el primer productor real.
 - T-300 Kit v0.2 con las 33 mejoras aplicadas: Word 00 a 06 y 09 regenerados desde sus fuentes, nuevos Word 11 (acta de arranque), 12 (ficha de oportunidad), 13 (prueba de trazabilidad) y 14 (borrador de confidencialidad, requiere revisión legal), Excel 05, 07, 08 y 10 ajustados y presentación corregida. La v0.1 queda en `kit_consultor/versiones_anteriores/v0.1/`. M-32 (prompt del informe) se prueba con el primer cliente.
 - T-301 Plantilla Excel 15 "Configuración del productor" y prompt de configuración v1 en `AI_WORKFLOW.md`.
@@ -105,8 +107,11 @@ No bloquean el Sprint 0.
 | P-01 | Stack | TypeScript y NestJS (ADR-0007), 2026-10-18 |
 | P-03 | Despliegue y motor | Híbrido: servidor PostgreSQL con una base por productor y nodo local SQLite (ADR-0007, ADR-0008), 2026-10-19 |
 | P-02 | Repositorio | Uno solo: `Ferchoner/trazabilidad-agro` en GitHub (ADR-0020), 2026-10-19 |
+| P-09 | Demo para futuros clientes | NestJS local en `demo/`, sin hosting hasta presentarlo (ADR-0021), 2026-10-19 |
 | P-22 | Reservas y pedidos | Reservas en Fase 4 (BR-ENT-04); una entrega puede tener varios lotes por pedido (BR-ENT-02), 2026-10-19 |
 
 ## Notas
+
+- El demo (T-012) usa `node:sqlite`, el SQLite que trae Node.js 24: se instala en Windows sin compilar nada. Es evidencia para la consecuencia de ADR-0007 que revisa T-008, no una decisión del producto.
 
 - La exploración técnica (`spikes/prototipo-python-sqlite`) se hizo antes de abrir el Sprint 0. Aporta evidencia para ADR-0007, ADR-0010 y ADR-0013 (encontró el problema de orden con eventos de la misma hora) y no es código de producto.

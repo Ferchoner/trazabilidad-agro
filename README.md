@@ -6,6 +6,8 @@ Traceability Core basado en eventos para productores de plántula de fresa en in
 
 Sprint 0 — Discovery and Architecture, en curso desde el 2026-10-18. No hay código de producto: primero se aprueban requisitos, arquitectura, modelo de datos y contratos (ver `docs/SPRINT.md`). Stack decidido: TypeScript con NestJS, PostgreSQL en un servidor externo con una base por productor y SQLite en el nodo local sin Internet (ADR-0007, ADR-0008).
 
+Hay un demo para futuros clientes en `demo/` (T-012, ADR-0021): NestJS local con los datos ficticios del caso Productor A para mostrar el registro de lotes, sus estados y el inventario. Es material de ventas, no código de producto; ver `demo/README.md`.
+
 Existe una exploración técnica previa (`spikes/prototipo-python-sqlite/` en la carpeta compartida del proyecto), hecha antes de abrir el Sprint 0. No es código de producto: sirvió como evidencia para ADR-0010 y ADR-0013, y T-008 la rehace con NestJS.
 
 ## Relación con el resto del proyecto
