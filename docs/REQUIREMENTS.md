@@ -237,3 +237,9 @@ Del análisis de la documentación de origen (`analisis/analisis_documentacion.m
 | 16 | Inventario operativo vs. financiero | P-21 |
 | 17 | Matriz de permisos | §4; P-18 |
 | 18 | Convención de idioma | ADR-0009 (códigos sin acento); P-32 |
+
+Detectadas después:
+
+| # | Tema | Resolución |
+|---|---|---|
+| 19 | Fila del Excel con más plantas que cavidades: BR-INT-02 dice error y la configuración inicial del Productor A (T-301, hoja Columnas del Excel) dice advertencia | Prevalece BR-INT-02 (plan de T-012 aprobado por Fernando el 2026-10-20); falta corregir la configuración del Productor A en el kit (T-301) |

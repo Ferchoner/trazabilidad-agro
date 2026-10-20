@@ -42,6 +42,10 @@ El MVP guarda nombres de usuarios del productor y nombre de sus clientes en las 
 
 Configuración sensible (clave de sincronización, PIN iniciales) fuera del repositorio, con un archivo de ejemplo sin valores reales, como `.env.example` en base-shop.
 
+## Demo para futuros clientes (ADR-0021)
+
+El demo de `demo/` no tiene PIN ni sesión (P-40): el usuario se elige en pantalla y viaja en un encabezado, así que no cumple "Autorización" de arriba y no se usa con datos reales. Mitigaciones: solo datos ficticios, escucha en `127.0.0.1` salvo que se pida `HOST=0.0.0.0`, permisos por rol verificados en el servidor, cabeceras CSP y `nosniff`, todo texto escapado en la interfaz y errores sin detalles internos.
+
 ## Auditoría
 
 El almacén de eventos es la auditoría de negocio. Además: inicios de sesión, fallos de autenticación, importaciones, sincronizaciones y respaldos se registran.
