@@ -25,6 +25,7 @@ Sprint 0 — Discovery and Architecture, desde el 2026-10-18 (`SPRINT.md`). Sin 
 - T-002 Actores y alcance del MVP (borrador en `REQUIREMENTS.md`)
 - T-006 Contradicciones y ambigüedades (18 huecos mapeados)
 - T-008 Prueba técnica: rehacer la exploración en NestJS con PostgreSQL y SQLite
+- T-012 Demo para futuros clientes con NestJS local y datos ficticios del Productor A (ADR-0021)
 - T-010 Repositorio creado y documentación subida; falta la CI (con T-100) y proteger `main`
 
 ## Review
@@ -36,7 +37,6 @@ Sprint 0 — Discovery and Architecture, desde el 2026-10-18 (`SPRINT.md`). Sin 
 ## Next
 
 - Aprobar las ADR en estado Propuesta (T-003)
-- Aprobar ADR-0021 para construir el demo para futuros clientes (T-012, P-09)
 
 ## Fuera del MVP
 
@@ -54,7 +54,6 @@ Nada bloqueado.
 |---|---|---|---|
 | P-04 | Navegadores mínimos, volumen por temporada y usuarios simultáneos. La PC de referencia ya está fijada: 2016, Windows 10, 4 GB, disco mecánico (H-11, `REQUIREMENTS.md` §9) | T-401 | Fernando / primer cliente |
 | P-06 | HTTPS en la red local para PWA instalable y cámara como lector | T-132 | Equipo |
-| P-09 | Demo para futuros clientes: forma, dónde se comparte y dónde vive el código (ADR-0021) | T-012 | Fernando |
 | P-08 | Conexión nodo local–servidor: autenticación del nodo y frecuencia de sincronización (TLS y dominio, con el cliente) | T-105 | Equipo |
 
 ### Se deciden con el primer cliente (ADR-0019)
@@ -107,6 +106,7 @@ No bloquean el Sprint 0.
 | P-01 | Stack | TypeScript y NestJS (ADR-0007), 2026-10-18 |
 | P-03 | Despliegue y motor | Híbrido: servidor PostgreSQL con una base por productor y nodo local SQLite (ADR-0007, ADR-0008), 2026-10-19 |
 | P-02 | Repositorio | Uno solo: `Ferchoner/trazabilidad-agro` en GitHub (ADR-0020), 2026-10-19 |
+| P-09 | Demo para futuros clientes | NestJS local en `demo/`, sin hosting hasta presentarlo (ADR-0021), 2026-10-19 |
 | P-22 | Reservas y pedidos | Reservas en Fase 4 (BR-ENT-04); una entrega puede tener varios lotes por pedido (BR-ENT-02), 2026-10-19 |
 
 ## Notas
