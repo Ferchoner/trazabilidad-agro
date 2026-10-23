@@ -1,6 +1,6 @@
 # PLAN T-013 — Demo con aspecto de producto, escáner de código de barras e impresión de etiquetas
 
-Estado: **propuesta, pendiente de aprobación de Fernando** (`AI_WORKFLOW.md`). No se escribe código hasta aprobarlo.
+Estado: **aprobado por Fernando el 2026-10-23**, con cuatro formatos de etiqueta (§6.1) y el resto de las decisiones por defecto.
 Origen: mensaje de Fernando del 2026-10-23. Parte de T-012 (en REVIEW) y de ADR-0021 y ADR-0014.
 
 ## 1. Objetivo
@@ -14,8 +14,8 @@ Origen: mensaje de Fernando del 2026-10-23. Parte de T-012 (en REVIEW) y de ADR-
 |---|---|---|
 | Identificación | ADR-0014 (aceptada): etiqueta impresa con código de barras y escáner USB que funciona como teclado es el mínimo. ARCHITECTURE.md ya lo dice. No hace falta otra decisión para el modelo. | Ya decidido |
 | Cámara como lector | ARCHITECTURE.md: requiere HTTPS en la red local (P-06). En la laptop (`127.0.0.1`) funciona sin HTTPS; en el teléfono por Wi-Fi no, mientras P-06 siga abierta. | Ya decidido; P-06 sigue abierta |
-| Aspecto de producto | Cambia ADR-0021 y el criterio de T-012 "ficticio, marcado en pantalla". Se registra como **ADR-0022** (propuesta) y se ajusta el criterio de T-012. | Nuevo, requiere tu aprobación |
-| Impresión | **ADR-0023** (propuesta): la etiqueta se genera en el navegador (código de barras en SVG, sin librerías externas ni Internet) y se imprime con el diálogo de impresión del sistema, a cualquier impresora instalada en Windows (térmica de etiquetas u hoja carta). La impresión directa en lenguaje de impresora (ZPL de Zebra, TSPL) queda para el MVP (T-131), porque exige un servicio local por marca. | Nuevo, requiere tu aprobación |
+| Aspecto de producto | Cambia ADR-0021 y el criterio de T-012 "ficticio, marcado en pantalla". Se registra como **ADR-0022** y se ajusta el criterio de T-012. | Aceptada 2026-10-23 |
+| Impresión | **ADR-0023**: la etiqueta se genera en el navegador (código de barras en SVG, sin librerías externas ni Internet) y se imprime con el diálogo de impresión del sistema, a cualquier impresora instalada en Windows (térmica de etiquetas u hoja carta). La impresión directa en lenguaje de impresora (ZPL de Zebra, TSPL) queda para el MVP (T-131), porque exige un servicio local por marca. | Aceptada 2026-10-23 |
 
 Nada de esto impone tecnología al productor (regla 17): el AS-IS dice que el folio se asigna días después y se repite, y que la remisión no lleva lote. La etiqueta y el escáner son el mínimo de ADR-0014; RFID, NFC y QR quedan fuera.
 
@@ -40,7 +40,7 @@ Nada de esto impone tecnología al productor (regla 17): el AS-IS dice que el fo
 | 8 | **Etiqueta de lote**: folio grande, código de barras Code 128 del folio, variedad, fecha de siembra, tabla y cantidad sembrada |
 | 9 | **Etiqueta de ubicación** para cada tabla (por ejemplo `INV1-A-M1`), para escanear el destino de un movimiento |
 | 10 | Imprimir desde la ficha del lote, al terminar de registrar un lote ("Imprimir etiqueta") y desde una pantalla **Etiquetas** (varios lotes o todas las tablas de un invernadero) |
-| 11 | Dos formatos: etiqueta térmica de 100 × 50 mm (una por hoja) y hoja carta con varias etiquetas. Se elige al imprimir |
+| 11 | Cuatro formatos, se elige al imprimir: térmica de 100 × 50 mm, rollo térmico de 80 mm (80 × 50 mm), rollo térmico de 58 mm (58 × 40 mm, versión compacta) y hoja carta con varias etiquetas |
 | 12 | Cada impresión queda como evento inmutable `LabelPrinted` (lote o ubicación, formato, usuario, fecha): la ficha muestra cuándo se imprimió y las reimpresiones |
 
 Code 128 porque lo lee cualquier pistola 1D, que es la más barata; las de 2D también lo leen.
@@ -66,14 +66,14 @@ Impresión directa ZPL/TSPL, etiquetas de charola individual (P-14), QR, RFID y 
 
 - `public/codigo128.js`: codificador Code 128 (juego B, dígito verificador módulo 103) que devuelve SVG. Sin dependencias, compatible con la CSP actual (`script-src 'self'`).
 - `public/escaner.js`: escucha del teclado que distingue una pistola (intervalo entre teclas menor a ~35 ms, al menos 4 caracteres, termina en Enter) de una persona escribiendo; no interfiere cuando el foco está en un campo de texto normal salvo el de escaneo.
-- Hoja de estilos de impresión con `@page` para 100 × 50 mm y carta; la vista previa es la del navegador.
+- Hoja de estilos de impresión con `@page` para cada uno de los cuatro formatos; la vista previa es la del navegador.
 - `src/domain`: nuevo evento `LabelPrinted` con validación (el lote o la ubicación existe, el formato es válido); no cambia el estado del lote ni el inventario, solo la historia. Permiso en la configuración del productor por rol (ADMIN, OFICINA, PRODUCCION). Eventos ya guardados no cambian (regla 12).
-- API: `GET /api/labels/lot/:folio`, `GET /api/labels/location/:code` (datos de la etiqueta) y `GET /api/scan/:code` (qué es el código: lote, ubicación o desconocido); la impresión se registra con `POST /api/events` como hoy.
+- API: `GET /api/labels` (datos de todas las etiquetas con sus impresiones; en la implementación se juntó en uno lo que el plan tenía como dos endpoints) y `GET /api/scan/:code` (qué es el código: lote, ubicación o desconocido); la impresión se registra con `POST /api/events` como hoy.
 - Inicio de sesión: el usuario elegido se guarda en el navegador y viaja en el encabezado `x-demo-user` como hoy; el servidor no cambia en este punto.
 
 ## 5. Pasos
 
-1. Rama nueva desde `main` (la rama anterior ya se integró). ADR-0022 y ADR-0023 en Propuesta, T-013 en TASKS con criterios, ajuste del criterio de T-012.
+1. Rama nueva desde `main` (la rama anterior ya se integró). ADR-0022 y ADR-0023 aceptadas, T-013 en TASKS con criterios, ajuste del criterio de T-012.
 2. Aspecto de producto (3.1).
 3. Codificador Code 128 con pruebas contra códigos de referencia.
 4. Evento `LabelPrinted`, endpoints de etiqueta y escaneo, con pruebas.
@@ -86,7 +86,7 @@ Impresión directa ZPL/TSPL, etiquetas de charola individual (P-14), QR, RFID y 
 
 ## 6. Decisiones por defecto (cámbialas si no te sirven)
 
-1. Etiqueta térmica de 100 × 50 mm y hoja carta. Si ya tienes impresora, dime el tamaño de su etiqueta.
+1. Formatos (Fernando, 2026-10-23): térmica de 100 × 50 mm, rollo térmico de 80 mm, rollo térmico de 58 mm y hoja carta. Por defecto, en los rollos la etiqueta mide 80 × 50 mm y 58 × 40 mm.
 2. Code 128 con el folio (`L-0822`) y las tablas con su código (`INV1-A-M1`).
 3. El nombre en pantalla sigue siendo "Productor A", configurable.
 4. Inicio de sesión sin contraseña, como hoy.

@@ -1,6 +1,7 @@
 // Consultas de solo lectura sobre el estado (Traceability Queries, DOMAIN_MODEL.md).
 
 import { localDate } from './dates';
+import { LABEL_FORMATS } from './label-formats';
 import { operationDate, safetyBlock } from './projection';
 import {
   Commercial,
@@ -147,6 +148,12 @@ export function describeEvent(state: TraceState, e: TraceEvent, config: Producer
         .map((l) => `${state.lots.get(l.lotId)?.folio ?? '?'} (${l.quantity})`)
         .join(', ');
       return `Entrega a ${p.customer}, pedido ${p.order}: ${lines}`;
+    }
+    case 'LabelPrinted': {
+      const fmt = LABEL_FORMATS.find((f) => f.code === p.format)?.label ?? p.format;
+      const prev = (state.labelPrints.get(e.entityId) ?? []).find((x) => x.eventId === e.id);
+      const copies = p.copies === 1 ? '1 copia' : `${p.copies} copias`;
+      return `Etiqueta de ${target} ${prev?.reprint ? 'reimpresa' : 'impresa'} (${fmt}, ${copies})`;
     }
     case 'EventVoided': {
       const t = state.events.get(p.eventId);

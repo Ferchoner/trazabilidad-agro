@@ -30,6 +30,7 @@ Sprint 0 — Discovery and Architecture, desde el 2026-10-18 (`SPRINT.md`). Sin 
 ## Review
 
 - T-012 Demo para futuros clientes en `demo/`: NestJS 11 y SQLite local con los datos ficticios del Productor A; 33 pruebas en verde y recorrido en navegador de PC y teléfono. Guía en Word en la carpeta compartida (`demo/`). Siguiente paso: Fernando lo presenta y se decide si va a un hosting (ADR-0021).
+- T-013 Demo con aspecto de producto, escáner e impresión de etiquetas: 45 pruebas en verde (33 antes); recorrido en navegador con pistola simulada; las etiquetas impresas a PDF se leen con un decodificador independiente. Falta probar con pistola e impresora reales.
 
 - T-011 Hallazgos H-01 a H-15 del caso Productor A llevados a reglas, casos de uso, modelo y ADR-0010 (aceptada), con las decisiones recomendadas que Fernando aprobó el 2026-10-19. Se confirman con el primer productor real.
 - T-300 Kit v0.2 con las 33 mejoras aplicadas: Word 00 a 06 y 09 regenerados desde sus fuentes, nuevos Word 11 (acta de arranque), 12 (ficha de oportunidad), 13 (prueba de trazabilidad) y 14 (borrador de confidencialidad, requiere revisión legal), Excel 05, 07, 08 y 10 ajustados y presentación corregida. La v0.1 queda en `kit_consultor/versiones_anteriores/v0.1/`. M-32 (prompt del informe) se prueba con el primer cliente.

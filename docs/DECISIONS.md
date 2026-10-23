@@ -284,3 +284,25 @@ Reemplazada parcialmente por ADR-0002 a ADR-0006 (2026-10-18). Sigue vigente par
 - **Alternativas consideradas:** Página que corre entera en el navegador y se comparte por enlace (el cliente la prueba solo, pero no usa NestJS y adelanta la decisión de dónde publicarla); servidor público en la nube (obliga a elegir proveedor antes del primer cliente, ADR-0019); esperar al MVP (no hay nada que mostrar en ventas hasta entonces); dejar el demo fuera de Git como `spikes/` (ADR-0020), descartada porque el demo se mantiene y se prueba, no se desecha.
 - **Consecuencias:** El cliente no lo prueba solo hasta decidir el hosting; mientras tanto lo presenta el consultor. El demo no demuestra servidor PostgreSQL, sincronización entre equipos, captura sin señal ni rendimiento en la PC mínima; eso sigue en T-008. Simplificaciones del demo, no del producto: un solo nodo y un solo bloque de folios (P-11), selección de usuario sin PIN (P-40), proyecciones en memoria reconstruidas al arrancar, sin charolas individuales (el Productor A traza por lote, P-14) y botón para regresar a los datos iniciales. Cada cambio de reglas del producto se lleva al demo a mano mientras sean código separado. Amplía ADR-0020 con la carpeta `demo/`.
 - **Estado:** Aceptada (2026-10-19, Fernando: NestJS local, el hosting se decide después de presentarlo).
+
+---
+
+## ADR-0022 — El demo se ve como producto terminado
+
+- **Fecha:** 2026-10-23
+- **Contexto:** Al revisar el demo (T-012), Fernando pidió el 2026-10-23 que no se vean los avisos de que es un demo: busca que el cliente vea un producto terminado. ADR-0021 punto 5 pedía marcar en pantalla los datos ficticios.
+- **Decisión:** Reemplaza ADR-0021 punto 5. La interfaz del demo no muestra avisos de "demo", "ficticio" ni "no es el producto". El nombre del productor sale de la configuración. La elección de usuario es una pantalla de inicio de sesión (sigue sin contraseña, P-40) y "Restablecer datos" pasa a una pantalla de Administración solo para el Administrador. Lo interno (README, `docs/`, código y la guía del consultor) sigue diciendo que es un demo con datos ficticios del caso Productor A (ADR-0017).
+- **Alternativas consideradas:** Mantener la franja de aviso (lo que Fernando descartó); un modo "presentación" que la oculte (dos versiones que mantener).
+- **Consecuencias:** El consultor aclara al presentar que los datos son de un caso ficticio; la guía en Word lo dice. Sin contraseña, el demo sigue solo en la laptop o en una red de confianza (SECURITY.md).
+- **Estado:** Aceptada (2026-10-23, Fernando, plan T-013).
+
+---
+
+## ADR-0023 — Etiquetas impresas desde el navegador, con Code 128
+
+- **Fecha:** 2026-10-23
+- **Contexto:** Fernando pidió el 2026-10-23 que el demo muestre cómo se registra físicamente un lote: con pistola lectora de códigos de barras y con la impresión de su etiqueta. ADR-0014 ya fija como mínimo la etiqueta impresa y el escáner USB que funciona como teclado; falta decidir cómo se imprime (UC-IDE-03, T-131).
+- **Decisión:** La etiqueta se genera en el navegador: código de barras Code 128 en SVG con un codificador propio, sin librerías externas ni Internet (CSP `script-src 'self'`). Se imprime con el diálogo de impresión del sistema a cualquier impresora instalada, en cuatro formatos: térmica de 100 × 50 mm, rollo térmico de 80 mm, rollo térmico de 58 mm y hoja carta con varias etiquetas. El código de un lote es su folio (`L-0822`) y el de una tabla, su ruta (`INV1-A-M1`). Cada impresión es un evento inmutable `LabelPrinted` que no cambia el estado del lote. La pistola se reconoce por su ritmo de teclas (muy seguidas y con Enter al final); la cámara se usa solo donde el navegador trae lector de códigos y el contexto es seguro (P-06).
+- **Alternativas consideradas:** Impresión directa en lenguaje de impresora (ZPL, TSPL), que exige un servicio local por marca y queda para el MVP (T-131); QR, que obliga a una pistola 2D; una librería de códigos desde CDN, que rompe la operación sin Internet.
+- **Consecuencias:** Funciona con cualquier impresora con controlador de Windows; los márgenes y la escala dependen del controlador, y la guía indica cómo ajustarlos. Aplica al demo; para el producto la retoma T-131.
+- **Estado:** Aceptada para el demo (2026-10-23, Fernando, plan T-013).

@@ -44,7 +44,7 @@ Configuración sensible (clave de sincronización, PIN iniciales) fuera del repo
 
 ## Demo para futuros clientes (ADR-0021)
 
-El demo de `demo/` no tiene PIN ni sesión (P-40): el usuario se elige en pantalla y viaja en un encabezado, así que no cumple "Autorización" de arriba y no se usa con datos reales. Mitigaciones: solo datos ficticios, escucha en `127.0.0.1` salvo que se pida `HOST=0.0.0.0`, permisos por rol verificados en el servidor, cabeceras CSP y `nosniff`, todo texto escapado en la interfaz y errores sin detalles internos.
+El demo de `demo/` no tiene PIN ni contraseña (P-40): el usuario se elige en una pantalla de inicio de sesión (ADR-0022), se recuerda en el navegador y viaja en un encabezado, así que no cumple "Autorización" de arriba y no se usa con datos reales. Mitigaciones: solo datos ficticios, escucha en `127.0.0.1` salvo que se pida `HOST=0.0.0.0`, permisos por rol verificados en el servidor, cabeceras CSP y `nosniff`, todo texto escapado en la interfaz y errores sin detalles internos. Sin avisos de demo en pantalla (ADR-0022), los datos ficticios no se distinguen a la vista: quien presenta lo aclara. El código leído por la pistola o la cámara se valida (ASCII imprimible, hasta 40 caracteres) y solo se consulta; la cámara se pide solo al pulsar su botón y se apaga al leer o cerrar.
 
 ## Auditoría
 

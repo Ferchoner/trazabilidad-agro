@@ -1,7 +1,7 @@
 {
   "_comment": "Configuración del caso Productor A (datos ficticios, ADR-0017). Sale de 'Configuración inicial - Productor A.xlsx' (T-301). Lo propio del productor vive aquí y no en el código (ADR-0015). Sin PIN ni contraseñas (P-40).",
   "producer": {
-    "name": "Productor A (ficticio)",
+    "name": "Productor A",
     "nodeCode": "P1",
     "folioPrefix": "L",
     "folioDigits": 4,
@@ -44,7 +44,14 @@
     "ADMIN": { "label": "Administrador", "can": ["*"] },
     "OFICINA": {
       "label": "Oficina",
-      "can": ["LotPlanned", "LotSown", "LossRecorded", "LotTransferred", "FertilizationRecorded"]
+      "can": [
+        "LotPlanned",
+        "LotSown",
+        "LossRecorded",
+        "LotTransferred",
+        "FertilizationRecorded",
+        "LabelPrinted"
+      ]
     },
     "PRODUCCION": {
       "label": "Producción",
@@ -58,7 +65,8 @@
         "ApplicationRecorded",
         "FertilizationRecorded",
         "InspectionRecorded",
-        "QuarantineStarted"
+        "QuarantineStarted",
+        "LabelPrinted"
       ]
     },
     "CAPTURISTA": { "label": "Capturista", "can": ["LossRecorded", "LotTransferred"] },
