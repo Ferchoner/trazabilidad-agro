@@ -3,6 +3,7 @@
 
 import { addDays, isIsoDate, localDate } from './dates';
 import { DomainError, fail } from './errors';
+import { LABEL_FORMATS, MAX_COPIES } from './label-formats';
 import {
   CORE_STAGES,
   emptyState,
@@ -561,6 +562,29 @@ const handlers: Record<string, Handler> = {
       date,
       lines: parsed.map(({ lot, quantity }) => ({ lotId: lot.id, quantity })),
     });
+  },
+
+  LabelPrinted(state, e) {
+    const format = str(e.payload, 'format', 'UC-IDE-03', 'el formato de la etiqueta');
+    if (!LABEL_FORMATS.some((f) => f.code === format))
+      fail('UC-IDE-03', `El formato de etiqueta ${format} no existe.`);
+    const copies = positiveInt(e.payload, 'copies', 'UC-IDE-03', 'El número de copias');
+    if (copies > MAX_COPIES) fail('UC-IDE-03', `Se imprimen hasta ${MAX_COPIES} copias a la vez.`);
+    if (e.entityType === 'lot') getLot(state, e.entityId);
+    else if (e.entityType === 'location') getLocation(state, e.entityId);
+    else fail('UC-IDE-03', 'La etiqueta es de un lote o de una ubicación.');
+    const list = state.labelPrints.get(e.entityId) ?? [];
+    list.push({
+      eventId: e.id,
+      format,
+      copies,
+      userId: e.userId,
+      occurredAt: e.occurredAt,
+      reprint: list.length > 0,
+    });
+    state.labelPrints.set(e.entityId, list);
+    // La etiqueta es historia del lote, no un cambio de su estado.
+    if (e.entityType === 'lot') linkEvent(state.lots.get(e.entityId)!, e.id);
   },
 
   EventVoided(state, e) {

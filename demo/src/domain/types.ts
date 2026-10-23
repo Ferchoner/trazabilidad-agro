@@ -36,6 +36,7 @@ export type EventType =
   | 'QuarantineStarted'
   | 'QuarantineReleased'
   | 'DispatchRecorded'
+  | 'LabelPrinted'
   | 'EventVoided';
 
 export type EntityType =
@@ -179,6 +180,16 @@ export interface DispatchRecord {
   lines: { lotId: string; quantity: number }[];
 }
 
+/** Una impresión de etiqueta (ADR-0023); no cambia el estado del lote. */
+export interface LabelPrint {
+  eventId: string;
+  format: string;
+  copies: number;
+  userId: string;
+  occurredAt: string;
+  reprint: boolean;
+}
+
 export interface TraceState {
   locations: Map<string, Location>;
   varieties: Map<string, Variety>;
@@ -187,6 +198,8 @@ export interface TraceState {
   lots: Map<string, Lot>;
   folios: Map<string, string>;
   dispatches: Map<string, DispatchRecord>;
+  /** Impresiones de etiqueta por lote o ubicación (ADR-0023). */
+  labelPrints: Map<string, LabelPrint[]>;
   /** Último consecutivo de folio usado (ADR-0010: los nuevos siguen al último del Excel). */
   lastFolioNumber: number;
   events: Map<string, TraceEvent>;
@@ -204,6 +217,7 @@ export function emptyState(config: ProducerConfig): TraceState {
     lots: new Map(),
     folios: new Map(),
     dispatches: new Map(),
+    labelPrints: new Map(),
     lastFolioNumber: config.producer.lastExcelFolio,
     events: new Map(),
     status: new Map(),

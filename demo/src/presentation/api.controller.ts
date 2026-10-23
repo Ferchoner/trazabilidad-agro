@@ -10,6 +10,8 @@ import {
   Query,
 } from '@nestjs/common';
 import { checkExcelRows } from '../domain/excel-check';
+import { LABEL_FORMATS } from '../domain/label-formats';
+import { labelsData, resolveCode, SCAN_CODE_RE } from '../domain/labels';
 import {
   dispatchesReport,
   eventView,
@@ -49,8 +51,8 @@ export class ApiController {
       })),
       lossCauses: c.lossCauses,
       inspectionResults: c.inspectionResults,
+      labelFormats: LABEL_FORMATS,
       today: this.trace.today(),
-      demo: true,
     };
   }
 
@@ -120,12 +122,24 @@ export class ApiController {
     return { total: filtered.length, events: filtered.slice(0, max) };
   }
 
+  @Get('labels')
+  labels() {
+    return labelsData(this.trace.current, this.trace.config);
+  }
+
+  /** Qué es un código leído con la pistola o la cámara (ADR-0014). No cambia nada. */
+  @Get('scan/:code')
+  scan(@Param('code') code: string) {
+    if (!SCAN_CODE_RE.test(code)) throw new InputError('El código leído no es válido.');
+    return resolveCode(this.trace.current, code);
+  }
+
   @Get('import-check')
   importCheck() {
     const names = [...this.trace.current.varieties.values()].map((v) => v.name);
     const rows = checkExcelRows(EXCEL_2026_ROWS, names, this.trace.config);
     return {
-      file: 'Control de siembra 2026 (Productor A, ficticio), hoja Siembras 2026',
+      file: 'Control de siembra 2026, hoja Siembras 2026',
       rows,
       totals: {
         rows: rows.length,
@@ -157,7 +171,7 @@ export class ApiController {
     return this.trace.submit(user, inputs);
   }
 
-  @Post('demo/reset')
+  @Post('admin/reset')
   @HttpCode(200)
   reset(@Headers(USER_HEADER) user: string) {
     this.trace.reset(user);

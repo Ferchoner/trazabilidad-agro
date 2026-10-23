@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Trazabilidad de plántula · Demo Productor A</title>
+    <title>Trazabilidad de plántula</title>
     <link
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='18' r='11' fill='%23c0392b'/%3E%3Cpath d='M16 7c-3-4-7-3-8-1 3 0 5 1 8 4 3-3 5-4 8-4-1-2-5-3-8 1z' fill='%232e7d32'/%3E%3C/svg%3E"
@@ -11,46 +11,89 @@
     <link rel="stylesheet" href="estilos.css" />
   </head>
   <body>
-    <div class="demo-banner" role="note">
-      Demo con datos ficticios del caso <strong>Productor A</strong>. No es el producto: sirve para
-      mostrar cómo se registra y se consulta la trazabilidad.
-    </div>
-    <header class="top">
-      <div class="brand">
-        <span class="logo" aria-hidden="true"></span>
-        <div>
-          <div class="brand-title">Trazabilidad de plántula</div>
-          <div class="brand-sub" id="producer">Productor A (ficticio)</div>
+    <section id="login" class="login" hidden aria-labelledby="login-title">
+      <div class="login-card">
+        <div class="brand">
+          <span class="logo" aria-hidden="true"></span>
+          <div>
+            <div class="brand-title">Trazabilidad de plántula</div>
+            <div class="brand-sub" data-producer></div>
+          </div>
         </div>
+        <h1 id="login-title">Iniciar sesión</h1>
+        <p class="muted small">Elige tu usuario.</p>
+        <div id="login-users" class="login-users"></div>
       </div>
-      <label class="user-select">
-        <span>Capturo como</span>
-        <select id="user"></select>
-      </label>
-    </header>
-    <nav class="tabs" id="tabs" aria-label="Secciones">
-      <a href="#/resumen" data-view="resumen">Resumen</a>
-      <a href="#/lotes" data-view="lotes">Lotes</a>
-      <a href="#/nuevo" data-view="nuevo">Registrar lote</a>
-      <a href="#/inventario" data-view="inventario">Inventario</a>
-      <a href="#/entregas" data-view="entregas">Entregas</a>
-      <a href="#/mermas" data-view="mermas">Mermas</a>
-      <a href="#/eventos" data-view="eventos">Eventos</a>
-      <a href="#/importacion" data-view="importacion">Excel 2026</a>
-    </nav>
-    <main id="app" tabindex="-1">
-      <p class="muted">Cargando…</p>
-    </main>
-    <footer class="foot">
-      <span id="today"></span>
-      <span
-        >Eventos inmutables: nada se edita ni se borra; un error se corrige con una anulación.</span
-      >
-      <button type="button" id="reset" class="link-button" hidden>
-        Regresar a los datos iniciales
-      </button>
-    </footer>
+    </section>
+    <div id="shell" hidden>
+      <header class="top">
+        <div class="brand">
+          <span class="logo" aria-hidden="true"></span>
+          <div>
+            <div class="brand-title">Trazabilidad de plántula</div>
+            <div class="brand-sub" data-producer></div>
+          </div>
+        </div>
+        <form class="scan-box" id="scan-form" role="search">
+          <label class="sr-only" for="scan-input">Escanear o escribir código</label>
+          <input
+            id="scan-input"
+            data-scan
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="Escanear o escribir código"
+          />
+          <button type="button" class="secondary" id="camera-open" hidden>Cámara</button>
+        </form>
+        <div class="session">
+          <div>
+            <div id="session-name" class="session-name"></div>
+            <div id="session-role" class="small muted"></div>
+          </div>
+          <button type="button" class="link-button" id="logout">Cerrar sesión</button>
+        </div>
+      </header>
+      <nav class="tabs" id="tabs" aria-label="Secciones">
+        <a href="#/resumen" data-view="resumen">Resumen</a>
+        <a href="#/lotes" data-view="lotes">Lotes</a>
+        <a href="#/nuevo" data-view="nuevo">Registrar lote</a>
+        <a href="#/inventario" data-view="inventario">Inventario</a>
+        <a href="#/entregas" data-view="entregas">Entregas</a>
+        <a href="#/etiquetas" data-view="etiquetas">Etiquetas</a>
+        <a href="#/mermas" data-view="mermas">Mermas</a>
+        <a href="#/eventos" data-view="eventos">Eventos</a>
+        <a href="#/importacion" data-view="importacion">Excel 2026</a>
+        <a href="#/admin" data-view="admin" id="tab-admin" hidden>Administración</a>
+      </nav>
+      <main id="app" tabindex="-1">
+        <p class="muted">Cargando…</p>
+      </main>
+      <footer class="foot">
+        <span id="today"></span>
+        <span
+          >Historia inmutable: nada se edita ni se borra; un error se corrige con una
+          anulación.</span
+        >
+      </footer>
+    </div>
+    <div
+      id="camera"
+      class="camera"
+      hidden
+      role="dialog"
+      aria-modal="true"
+      aria-label="Escanear con cámara"
+    >
+      <div class="camera-card">
+        <video id="camera-video" playsinline muted></video>
+        <p class="small muted">Apunta al código de barras de la etiqueta.</p>
+        <button type="button" class="secondary" id="camera-close">Cerrar</button>
+      </div>
+    </div>
+    <div id="print-area" class="print-area" aria-hidden="true"></div>
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <script src="codigo128.js"></script>
+    <script src="escaner.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

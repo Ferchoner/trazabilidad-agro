@@ -26,6 +26,7 @@ export const CAPTURE_TYPES: EventType[] = [
   'QuarantineStarted',
   'QuarantineReleased',
   'DispatchRecorded',
+  'LabelPrinted',
   'EventVoided',
 ];
 
@@ -34,6 +35,7 @@ const ENTITY_FOR: Partial<Record<EventType, EntityType[]>> = {
   FertilizationRecorded: ['lot', 'location'],
   InspectionRecorded: ['lot', 'location'],
   DispatchRecorded: ['dispatch'],
+  LabelPrinted: ['lot', 'location'],
   EventVoided: ['event'],
 };
 
@@ -87,7 +89,7 @@ export class TraceService {
 
   user(userId: string | undefined) {
     const user = this.config.users.find((u) => u.id === userId);
-    if (!user) throw new PermissionError('Usuario desconocido: elige con quién capturas.');
+    if (!user) throw new PermissionError('Usuario desconocido: vuelve a iniciar sesión.');
     return user;
   }
 
@@ -255,11 +257,11 @@ export class TraceService {
     this.state = candidate;
   }
 
-  /** Regresa el demo a los datos iniciales del caso (ADR-0021). Solo Administrador. */
+  /** Regresa el demo a los datos iniciales del caso (ADR-0021, ADR-0022). Solo Administrador. */
   reset(userId: string): void {
     const user = this.user(userId);
     if (!user.roles.some((r) => this.config.roles[r]?.can.includes('*'))) {
-      throw new PermissionError('Solo el Administrador regresa el demo a los datos iniciales.');
+      throw new PermissionError('Solo el Administrador restablece los datos.');
     }
     this.store.reset();
     this.store.append(this.seed(this.config));

@@ -422,3 +422,73 @@ describe('eventos inmutables (ADR-0005, ADR-0011, ADR-0013)', () => {
     expect(snapshot(service.current)).toBe(initial);
   });
 });
+
+describe('etiquetas (ADR-0023)', () => {
+  const label = (
+    entityType: 'lot' | 'location',
+    entityId: string,
+    payload: Record<string, unknown>,
+  ): CaptureInput => ({ id: randomUUID(), type: 'LabelPrinted', entityType, entityId, payload });
+
+  it('registra impresión y reimpresión sin cambiar el estado del lote', () => {
+    const { service } = makeService();
+    const before = lotDetail(
+      service.current,
+      service.current.lots.get(ids.lot('L-0818'))!,
+      service.config,
+      service.today(),
+    );
+    service.submit('jefe', [label('lot', ids.lot('L-0818'), { format: 'T100X50', copies: 1 })]);
+    service.submit('jefe', [label('lot', ids.lot('L-0818'), { format: 'CARTA', copies: 10 })]);
+    const after = lotDetail(
+      service.current,
+      service.current.lots.get(ids.lot('L-0818'))!,
+      service.config,
+      service.today(),
+    );
+    expect(after.currentQty).toBe(before.currentQty);
+    expect(after.stage).toBe(before.stage);
+    expect(after.hold).toBe(before.hold);
+    const descriptions = after.history
+      .filter((h) => h.type === 'LabelPrinted')
+      .map((h) => h.description);
+    expect(descriptions[0]).toBe('Etiqueta de L-0818 impresa (Térmica 100 × 50 mm, 1 copia)');
+    expect(descriptions[1]).toContain('reimpresa');
+    expect(service.current.labelPrints.get(ids.lot('L-0818'))).toHaveLength(2);
+  });
+
+  it('imprime etiquetas de tabla', () => {
+    const { service } = makeService();
+    service.submit('oficina', [
+      label('location', ids.loc('INV1-A-M1'), { format: 'R80', copies: 1 }),
+    ]);
+    expect(service.current.labelPrints.get(ids.loc('INV1-A-M1'))).toHaveLength(1);
+  });
+
+  it('rechaza formato, copias o entidad no válidos', () => {
+    const { service } = makeService();
+    expectRule(
+      () => service.submit('jefe', [label('lot', ids.lot('L-0818'), { format: 'A4', copies: 1 })]),
+      'UC-IDE-03',
+    );
+    expectRule(
+      () =>
+        service.submit('jefe', [label('lot', ids.lot('L-0818'), { format: 'R58', copies: 51 })]),
+      'UC-IDE-03',
+    );
+    expectRule(
+      () => service.submit('jefe', [label('lot', randomUUID(), { format: 'R58', copies: 1 })]),
+      'LOT-NOT-FOUND',
+    );
+    expect(() =>
+      service.submit('campo', [label('lot', ids.lot('L-0818'), { format: 'R58', copies: 1 })]),
+    ).toThrow(PermissionError);
+  });
+
+  it('se reconstruye igual con impresiones guardadas', () => {
+    const { service, store } = makeService();
+    service.submit('jefe', [label('lot', ids.lot('L-0812'), { format: 'R58', copies: 1 })]);
+    expect(snapshot(rebuild(store.all(), service.config))).toBe(snapshot(service.current));
+    expect(rebuild(store.all(), service.config).labelPrints.get(ids.lot('L-0812'))).toHaveLength(1);
+  });
+});

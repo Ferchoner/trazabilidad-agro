@@ -123,25 +123,25 @@ export function buildProductorASeed(config: ProducerConfig): TraceEvent[] {
   const products = [
     {
       key: 'captan',
-      name: 'Captan 50 (ficticio)',
+      name: 'Captan 50',
       activeIngredient: 'captan',
       safetyIntervalDays: 14,
     },
     {
       key: 'abamectina',
-      name: 'Abamectina 1.8 (ficticio)',
+      name: 'Abamectina 1.8',
       activeIngredient: 'abamectina',
       safetyIntervalDays: 7,
     },
     {
       key: 'cuprico',
-      name: 'Fungicida cúprico (ficticio)',
+      name: 'Fungicida cúprico',
       activeIngredient: 'oxicloruro de cobre',
       safetyIntervalDays: 7,
     },
     {
       key: 'ajo',
-      name: 'Extracto de ajo (ficticio)',
+      name: 'Extracto de ajo',
       activeIngredient: 'extracto de ajo',
       safetyIntervalDays: null,
     },
@@ -286,7 +286,7 @@ export function buildProductorASeed(config: ProducerConfig): TraceEvent[] {
         userId: 'oficina',
         deviceId: 'pc-oficina',
         locationId: seedLocationId(sector),
-        payload: { product: 'Fertirriego Triple 19 (ficticio)', dose: '1 g/L' },
+        payload: { product: 'Fertirriego Triple 19', dose: '1 g/L' },
       });
     }
   }

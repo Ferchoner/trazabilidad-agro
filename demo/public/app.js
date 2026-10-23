@@ -1,10 +1,10 @@
-// Interfaz del demo (ADR-0021). JavaScript sin framework; todo texto dinámico se escapa.
+// Interfaz del demo (ADR-0021, ADR-0022). JavaScript sin framework; todo texto dinámico se escapa.
+// Sin avisos de demo en pantalla: lo interno lo dicen README y docs/.
 'use strict';
 
 const $app = document.getElementById('app');
-const $user = document.getElementById('user');
 const $toast = document.getElementById('toast');
-const $reset = document.getElementById('reset');
+const $print = document.getElementById('print-area');
 
 const store = {
   get(key, fallback) {
@@ -25,6 +25,14 @@ const store = {
 
 let config = null;
 let catalog = null;
+/** Usuario con sesión iniciada (sin contraseña, P-40). */
+let sessionUser = null;
+/** Qué hace la pantalla actual con un código leído; si devuelve false, se abre lo leído. */
+let scanHandler = null;
+/** Navegación vigente: una consulta de una pantalla anterior no pinta sobre la actual. */
+let routeSeq = 0;
+
+class StaleView extends Error {}
 
 // ---------- utilidades ----------
 
@@ -46,10 +54,10 @@ function uuid() {
 }
 
 function deviceId() {
-  let id = store.get('demo-device', null);
+  let id = store.get('dispositivo', null);
   if (!id) {
     id = `navegador-${uuid().slice(0, 6)}`;
-    store.set('demo-device', id);
+    store.set('dispositivo', id);
   }
   return id;
 }
@@ -79,7 +87,7 @@ function fmtInstant(iso) {
 }
 
 function currentUser() {
-  return config.users.find((u) => u.id === $user.value) ?? config.users[0];
+  return config.users.find((u) => u.id === sessionUser) ?? config.users[0];
 }
 
 function can(type) {
@@ -103,11 +111,12 @@ function toast(message, isError = false) {
 }
 
 async function api(path, options = {}) {
+  const seq = routeSeq;
   const res = await fetch(`/api${path}`, {
     ...options,
     headers: {
       'content-type': 'application/json',
-      'x-demo-user': $user.value,
+      'x-demo-user': sessionUser ?? '',
       ...options.headers,
     },
   });
@@ -117,11 +126,12 @@ async function api(path, options = {}) {
     err.code = body.code;
     throw err;
   }
+  if (!options.method && !options.global && seq !== routeSeq) throw new StaleView();
   return body;
 }
 
 function errorText(err) {
-  return err.code ? `${err.message} (${err.code})` : err.message;
+  return err.message;
 }
 
 /** Envía un evento capturado con su UUID, hora del dispositivo y fecha de operación. */
@@ -227,6 +237,191 @@ function onSubmit(form, handler) {
   });
 }
 
+function isAdmin() {
+  return currentUser().permissions.includes('*');
+}
+
+// ---------- etiquetas (ADR-0023) ----------
+
+/** Espacio para el código de barras y su alto, en mm, por formato. */
+const BARCODE_BOX = {
+  T100X50: [88, 13],
+  R80: [70, 12],
+  R58: [50, 10],
+  CARTA: [90, 13],
+};
+
+function labelFormat(code) {
+  return config.labelFormats.find((f) => f.code === code) ?? config.labelFormats[0];
+}
+
+function formatOptions(selected = store.get('formato-etiqueta', 'T100X50')) {
+  return config.labelFormats
+    .map(
+      (f) =>
+        `<option value="${esc(f.code)}" ${f.code === selected ? 'selected' : ''}>${esc(f.label)}</option>`,
+    )
+    .join('');
+}
+
+/** Módulo en múltiplos de 0.125 mm (un punto a 203 ppp), entre 0.25 y 0.5 mm. */
+function barcodeSvg(code, fmt) {
+  const [avail, height] = BARCODE_BOX[fmt.code] ?? [80, 12];
+  const raw = avail / Code128.width(code);
+  const moduleMm = Math.max(0.25, Math.min(0.5, Math.floor(raw / 0.125) * 0.125));
+  return Code128.svg(code, { moduleMm, heightMm: height });
+}
+
+function lotLabelItem(lot) {
+  return {
+    kind: 'lot',
+    id: lot.id,
+    code: lot.folio,
+    variety: lot.variety,
+    sowingDate: lot.sowingDate,
+    quantity: lot.initialQty || lot.plannedQty,
+    trays: lot.trays,
+    location: lot.location?.path ?? '',
+  };
+}
+
+function labelHtml(item, fmt) {
+  const compact = fmt.code === 'R58';
+  const top = `<div class="lbl-top"><span>${esc(config.producer.name)}</span><span>${esc(item.kind === 'lot' ? 'Lote' : item.levelLabel)}</span></div>`;
+  const bars = `<div class="lbl-bars">${barcodeSvg(item.code, fmt)}</div>`;
+  if (item.kind === 'lot') {
+    return `<div class="label lbl-${esc(fmt.code)}">${top}
+      <div class="lbl-code">${esc(item.code)}</div>
+      <div class="lbl-line"><strong>${esc(item.variety)}</strong> · ${item.sowingDate ? `Siembra ${esc(fmtDate(item.sowingDate))}` : 'Planificado'}</div>
+      <div class="lbl-line">${esc(item.location || '—')}</div>
+      ${compact ? '' : `<div class="lbl-line">${fmtN(item.quantity)} plántulas${item.trays ? ` · ${item.trays} charolas` : ''}</div>`}
+      ${bars}</div>`;
+  }
+  return `<div class="label lbl-${esc(fmt.code)}">${top}
+    <div class="lbl-code">${esc(item.code)}</div>
+    <div class="lbl-line">${esc(item.path)}</div>
+    ${bars}</div>`;
+}
+
+/** Registra la impresión (un evento por etiqueta) y abre el diálogo de impresión del sistema. */
+async function printLabels(items, formatCode, copies) {
+  const fmt = labelFormat(formatCode);
+  const n = Math.max(1, Math.min(50, Number(copies) || 1));
+  if (!items.length) throw new Error('Elige al menos una etiqueta.');
+  await api('/events', {
+    method: 'POST',
+    body: JSON.stringify({
+      events: items.map((it) => ({
+        id: uuid(),
+        type: 'LabelPrinted',
+        entityType: it.kind,
+        entityId: it.id,
+        occurredAt: new Date().toISOString(),
+        deviceId: deviceId(),
+        payload: { format: fmt.code, copies: n },
+      })),
+    }),
+  });
+  store.set('formato-etiqueta', fmt.code);
+  const all = items.flatMap((it) => Array.from({ length: n }, () => it));
+  let html = '';
+  if (fmt.perSheet > 1) {
+    for (let i = 0; i < all.length; i += fmt.perSheet) {
+      html += `<div class="sheet sheet-${esc(fmt.code)}">${all
+        .slice(i, i + fmt.perSheet)
+        .map((it) => labelHtml(it, fmt))
+        .join('')}</div>`;
+    }
+  } else {
+    html = all
+      .map((it) => `<div class="page page-${esc(fmt.code)}">${labelHtml(it, fmt)}</div>`)
+      .join('');
+  }
+  $print.innerHTML = html;
+  window.print();
+}
+
+// ---------- lectura de códigos (ADR-0014) ----------
+
+async function onScan(raw) {
+  const code = String(raw ?? '').trim();
+  if (!code) return;
+  let result;
+  try {
+    result = await api(`/scan/${encodeURIComponent(code)}`, { global: true });
+  } catch (err) {
+    if (!(err instanceof StaleView)) toast(errorText(err), true);
+    return;
+  }
+  if (scanHandler && (await scanHandler(result))) return;
+  if (result.kind === 'unknown') {
+    toast(`Código no reconocido: ${result.code}`, true);
+  } else if (result.kind === 'lot') {
+    location.hash = `#/lote/${result.folio}`;
+  } else {
+    const lots = await api('/lots', { global: true });
+    const here = lots.filter(
+      (l) => l.location?.id === result.id && !['CERRADO', 'PERDIDO', 'CANCELADO'].includes(l.stage),
+    );
+    toast(`${result.path}: ${here.length ? here.map((l) => l.folio).join(', ') : 'sin lotes'}`);
+  }
+}
+
+async function setupCamera() {
+  const btn = document.getElementById('camera-open');
+  if (!('BarcodeDetector' in window) || !window.isSecureContext) return;
+  if (!navigator.mediaDevices?.getUserMedia) return;
+  let formats = [];
+  try {
+    formats = await window.BarcodeDetector.getSupportedFormats();
+  } catch {
+    return;
+  }
+  if (!formats.includes('code_128')) return;
+  btn.hidden = false;
+  btn.addEventListener('click', openCamera);
+}
+
+async function openCamera() {
+  const dialog = document.getElementById('camera');
+  const video = document.getElementById('camera-video');
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+  } catch {
+    toast('No se pudo abrir la cámara.', true);
+    return;
+  }
+  video.srcObject = stream;
+  dialog.hidden = false;
+  await video.play().catch(() => {});
+  const detector = new window.BarcodeDetector({ formats: ['code_128'] });
+  let done = false;
+  const stop = () => {
+    done = true;
+    stream.getTracks().forEach((t) => t.stop());
+    video.srcObject = null;
+    dialog.hidden = true;
+  };
+  document.getElementById('camera-close').onclick = stop;
+  dialog.onkeydown = (e) => e.key === 'Escape' && stop();
+  const tick = async () => {
+    if (done) return;
+    try {
+      const codes = await detector.detect(video);
+      if (codes.length) {
+        stop();
+        onScan(codes[0].rawValue);
+        return;
+      }
+    } catch {
+      /* cuadro sin imagen todavía */
+    }
+    setTimeout(tick, 250);
+  };
+  tick();
+}
+
 // ---------- vistas ----------
 
 const views = {
@@ -235,7 +430,7 @@ const views = {
     const pct = s.sown ? Math.round((s.lost / s.sown) * 1000) / 10 : 0;
     $app.innerHTML = `
       <h1>Resumen al ${esc(fmtDate(s.today))}</h1>
-      <p class="muted">Temporada 2026 del ${esc(s.producer)}: 2 invernaderos, 4 sectores y 12 tablas.</p>
+      <p class="muted">${esc(s.producer)} · temporada 2026</p>
       <div class="cards">
         <a class="card" href="#/lotes"><div class="label">Lotes activos</div><div class="value">${fmtN(s.activeLots)}</div><div class="hint">en invernadero o planificados</div></a>
         <a class="card" href="#/inventario"><div class="label">Plántulas en invernadero</div><div class="value">${fmtN(s.plantsInGreenhouse)}</div><div class="hint">de ${fmtN(s.sown)} sembradas</div></a>
@@ -247,18 +442,25 @@ const views = {
         <a class="card" href="#/eventos?status=CONFLICT"><div class="label">Eventos en conflicto</div><div class="value">${fmtN(s.conflicts)}</div><div class="hint">de ${fmtN(s.events)} eventos</div></a>
       </div>
       <div class="panel">
-        <h2>Recorrido sugerido</h2>
-        <ol class="tour">
-          <li>Abre el lote <a href="#/lote/L-0813">L-0813</a>: listo y parcialmente vendido. Su ficha muestra de dónde vino la plántula, las aplicaciones de su sector y a quién se entregó.</li>
-          <li>Abre <a href="#/lote/L-0816">L-0816</a>: está en cuarentena por sospecha de antracnosis aunque sigue en etapa Enraizado. La retención no borra la etapa.</li>
-          <li>Abre <a href="#/lote/L-0818">L-0818</a>: tiene una aplicación del 15 de octubre y no se puede entregar antes del 22.</li>
-          <li><a href="#/nuevo">Registra un lote</a> con el folio ${esc(s.nextFolio)}. Prueba sembrar más plántulas que cavidades: la regla lo impide.</li>
-          <li>En <a href="#/entregas">Entregas</a>, intenta entregar un lote en cuarentena o en intervalo de seguridad.</li>
-          <li>Revisa <a href="#/mermas">Mermas</a>: "sembramos 14 mil y entregamos menos" ahora tiene causas.</li>
-          <li>Mira <a href="#/importacion">Excel 2026</a>: qué filas del Excel actual entrarían y cuáles no, y por qué.</li>
-          <li>En <a href="#/eventos">Eventos</a> está toda la historia. Nada se edita; los errores se anulan con motivo.</li>
-        </ol>
+        <h2>Atención hoy</h2>
+        <div id="attention" class="stack"><p class="muted small">Cargando…</p></div>
       </div>`;
+    const lots = await api('/lots');
+    const active = lots.filter((l) => !['CERRADO', 'PERDIDO', 'CANCELADO'].includes(l.stage));
+    const groups = [
+      ['Se pueden entregar hoy', 'green', active.filter((l) => l.deliverable)],
+      ['En cuarentena', 'red', active.filter((l) => l.hold === 'EN_CUARENTENA')],
+      ['En intervalo de seguridad', 'amber', active.filter((l) => l.safety)],
+      ['Sin origen del material', 'amber', active.filter((l) => !l.material && l.sowingDate)],
+      ['Planificados por sembrar', '', active.filter((l) => l.stage === 'PLANIFICADO')],
+    ].filter(([, , list]) => list.length);
+    document.getElementById('attention').innerHTML =
+      groups
+        .map(
+          ([title, cls, list]) =>
+            `<div class="attention-row"><span class="badge ${cls}">${esc(title)}</span><span>${list.map((l) => `<a class="chip" href="#/lote/${esc(l.folio)}" title="${esc(l.safety?.message ?? l.holdReason ?? l.variety)}">${esc(l.folio)}</a>`).join('')}</span></div>`,
+        )
+        .join('') || '<p class="muted small">Nada pendiente.</p>';
   },
 
   async lotes(params) {
@@ -280,7 +482,7 @@ const views = {
     );
     $app.innerHTML = `
       <div class="row-head"><h1>Lotes</h1>${can('LotPlanned') ? '<a href="#/nuevo"><button class="primary" type="button">Registrar lote</button></a>' : ''}</div>
-      <p class="muted">El estado de cada lote tiene tres ejes: etapa, retención y situación comercial (ADR-0009).</p>
+      <p class="muted">Cada lote muestra su etapa, si está retenido y su situación comercial.</p>
       <form class="toolbar" id="filters">
         <input name="q" placeholder="Buscar folio" value="${esc(f.q)}" aria-label="Buscar folio">
         <select name="variety" aria-label="Variedad"><option value="">Todas las variedades</option>
@@ -343,12 +545,25 @@ const views = {
       </div>
       ${lot.safety ? `<div class="alert amber">${esc(lot.safety.message)}</div>` : ''}
       ${lot.deliverable ? '<div class="alert green">Se puede entregar hoy: listo, libre y fuera de intervalo de seguridad.</div>' : ''}
+      ${params.get('nuevo') ? '<div class="alert green">Lote registrado. Imprime su etiqueta y pégala en la tabla.</div>' : ''}
+      <div class="panel">
+        <div class="row-head"><h2>Etiqueta</h2><span class="small muted" id="label-prints"></span></div>
+        <div class="label-panel">
+          <div class="label-preview" id="lot-label"></div>
+          <form class="stack" id="lot-print">
+            <label class="field">Formato<select name="format">${formatOptions()}</select></label>
+            <label class="field">Copias<input type="number" name="copies" min="1" max="50" value="1" required></label>
+            <div class="actions"><button class="primary" type="submit" ${can('LabelPrinted') ? '' : 'disabled'}>Imprimir etiqueta</button></div>
+            ${can('LabelPrinted') ? '' : '<p class="small muted">Tu usuario no imprime etiquetas.</p>'}
+          </form>
+        </div>
+      </div>
       <div class="grid-2">
         <div class="panel">
           <h2>Datos y origen</h2>
           <dl class="facts">
             <dt>Variedad</dt><dd>${esc(lot.variety)}</dd>
-            <dt>Material vegetal</dt><dd>${m ? `${esc(m.origin)}, ${esc(m.supplier ?? 'proveedor PENDIENTE')}` : '<span class="badge amber">PENDIENTE</span> <span class="small muted">Sin proveedor en el Excel (BR-MAT-01)</span>'}</dd>
+            <dt>Material vegetal</dt><dd>${m ? `${esc(m.origin)}, ${esc(m.supplier ?? 'proveedor PENDIENTE')}` : '<span class="badge amber">PENDIENTE</span> <span class="small muted">Falta el proveedor del material</span>'}</dd>
             ${m ? `<dt>Documento</dt><dd>${esc(m.document ?? 'PENDIENTE')}</dd>` : ''}
             <dt>Siembra</dt><dd>${esc(fmtDate(lot.sowingDate))}</dd>
             <dt>Charolas</dt><dd>${lot.trays ? `${lot.trays} × ${lot.cavities} cavidades = ${fmtN(lot.trays * lot.cavities)}` : '—'}</dd>
@@ -366,7 +581,7 @@ const views = {
           ${lot.losses.length ? `<h3 class="small muted">Pérdidas</h3><ul class="small">${lot.losses.map((l) => `<li>${esc(fmtDate(l.date))}: ${fmtN(l.quantity)}, ${esc(l.cause)}</li>`).join('')}</ul>` : ''}
         </div>
       </div>
-      ${terminal ? '' : `<div class="panel"><h2>Registrar</h2><p class="muted small">Solo aparecen las operaciones que permite el rol de <strong>${esc(currentUser().name)}</strong>.</p><div class="action-list" id="actions"></div></div>`}
+      ${terminal ? '' : `<div class="panel"><h2>Registrar</h2><p class="muted small">Aparecen las operaciones que permite tu usuario. Para mover el lote, escanea la etiqueta de la tabla destino.</p><div class="action-list" id="actions"></div></div>`}
       <div class="panel">
         <h2>Historia del lote</h2>
         <p class="muted small">Eventos del lote y de su ubicación (en azul), en el orden en que se aplican. La fecha de la operación puede ser anterior a la de captura.</p>
@@ -383,6 +598,43 @@ const views = {
           .join('')}</ol>
       </div>`;
     if (!terminal) renderLotActions(lot);
+    const printed = lot.history.filter((h) => h.type === 'LabelPrinted' && h.status === 'APPLIED');
+    document.getElementById('label-prints').textContent = printed.length
+      ? `Impresa ${printed.length === 1 ? 'una vez' : `${printed.length} veces`}; última ${fmtInstant(printed[printed.length - 1].occurredAt)}`
+      : 'Sin imprimir';
+    const printForm = document.getElementById('lot-print');
+    const item = lotLabelItem(lot);
+    const preview = () => {
+      document.getElementById('lot-label').innerHTML = labelHtml(
+        item,
+        labelFormat(printForm.format.value),
+      );
+    };
+    printForm.format.addEventListener('change', preview);
+    preview();
+    onSubmit(printForm, async (d) => {
+      await printLabels([item], d.format, d.copies);
+      route();
+    });
+    scanHandler = (r) => {
+      if (r.kind !== 'location') return false;
+      const move = $app.querySelector('details[data-action="move"]');
+      if (!move) return false;
+      if (r.level !== 'TABLE') {
+        toast(`Escanea la etiqueta de una ${config.levels.TABLE.toLowerCase()}.`, true);
+        return true;
+      }
+      if (r.id === lot.location?.id) {
+        toast(`El lote ya está en ${r.path}.`, true);
+        return true;
+      }
+      move.open = true;
+      const form = move.querySelector('form');
+      form.toLocationId.value = r.id;
+      form.querySelector('button[type="submit"]').focus();
+      toast(`Destino: ${r.path}. Revisa la fecha y guarda.`);
+      return true;
+    };
     $app.querySelectorAll('[data-void]').forEach((b) =>
       b.addEventListener('click', async () => {
         const reason = prompt('Motivo de la anulación (queda en la historia):');
@@ -406,7 +658,7 @@ const views = {
 
   async nuevo() {
     if (!can('LotPlanned')) {
-      $app.innerHTML = `<h1>Registrar lote</h1><div class="alert amber">El rol de ${esc(currentUser().name)} no registra lotes. Cambia el usuario arriba (por ejemplo, Jefe de invernadero).</div>`;
+      $app.innerHTML = `<h1>Registrar lote</h1><div class="alert amber">Tu usuario no tiene permiso para registrar lotes.</div>`;
       return;
     }
     const [s, lots] = await Promise.all([api('/summary'), api('/lots')]);
@@ -421,7 +673,7 @@ const views = {
     const cav = { Festival: 72, 'Camino Real': 72, 'San Andreas': 128 };
     $app.innerHTML = `
       <h1>Registrar lote</h1>
-      <p class="muted">El folio es corto y existe desde la siembra (ADR-0010). Se puede conservar el folio del productor.</p>
+      <p class="muted">El folio se asigna al registrar y continúa la numeración de su control actual. Escanea la etiqueta de la tabla para ubicarlo; al guardar, imprime la etiqueta del lote.</p>
       <form class="panel stack" id="new-lot">
         <div class="form-grid">
           <label class="field">Folio<input name="folio" value="${esc(s.nextFolio)}" required pattern="[A-Za-z]{1,4}-[0-9]{3,6}(-[A-Za-z])?"></label>
@@ -466,7 +718,7 @@ const views = {
       const over = Number(form.quantity.value) > cap;
       document.getElementById('capacity').innerHTML =
         form.mode.value === 'sow'
-          ? `${fmtN(cap)} cavidades en total.${over ? ' <strong>Más plántulas que cavidades: la regla BR-LOT-03 lo impedirá.</strong>' : ''}`
+          ? `${fmtN(cap)} cavidades en total.${over ? ' <strong>Hay más plántulas que cavidades: no se podrá registrar.</strong>' : ''}`
           : '';
     };
     form.varietyId.addEventListener('change', fillMaterials);
@@ -483,6 +735,16 @@ const views = {
       }),
     );
     fillMaterials();
+    scanHandler = (r) => {
+      if (r.kind !== 'location') return false;
+      if (!['TABLE', 'SECTOR'].includes(r.level)) {
+        toast(`Escanea la etiqueta de una ${config.levels.TABLE.toLowerCase()}.`, true);
+        return true;
+      }
+      form.locationId.value = r.id;
+      toast(`Ubicación: ${r.path}.`);
+      return true;
+    };
     onSubmit(form, async (d) => {
       const sow = d.mode === 'sow';
       const res = await api('/lots', {
@@ -502,7 +764,7 @@ const views = {
         }),
       });
       toast(`Lote ${res.folio} registrado.`);
-      location.hash = `#/lote/${res.folio}`;
+      location.hash = `#/lote/${res.folio}?nuevo=1`;
     });
   },
 
@@ -513,14 +775,14 @@ const views = {
     const center = inv.byLocation[0];
     $app.innerHTML = `
       <h1>Inventario de plántula</h1>
-      <p class="muted">Plántulas vivas por variedad y etapa. "Para entregar hoy" separa lo que está listo, libre y fuera de intervalo de seguridad (UC-REP-01).</p>
+      <p class="muted">Plántulas vivas por variedad y etapa. "Para entregar hoy" separa lo que está listo, libre y fuera de intervalo de seguridad.</p>
       <div class="table-wrap"><table>
         <thead><tr><th>Variedad</th>${stages.map((s) => `<th class="num">${esc(s.label)}</th>`).join('')}<th class="num">Total</th><th class="num">Para entregar hoy</th><th class="num">En cuarentena</th><th class="num">Bloqueado por intervalo</th><th class="num">Planificado</th></tr></thead>
         <tbody>${rows.map((r) => `<tr><td><strong>${esc(r.variety)}</strong></td>${stages.map((s) => `<td class="num">${fmtN(r.byStage[s.code])}</td>`).join('')}<td class="num"><strong>${fmtN(r.total)}</strong></td><td class="num">${fmtN(r.deliverable)}</td><td class="num">${fmtN(r.quarantine)}</td><td class="num">${fmtN(r.safetyBlocked)}</td><td class="num muted">${fmtN(r.planned)}</td></tr>`).join('')}</tbody>
         <tfoot><tr><td>Total</td>${stages.map((s) => `<td class="num">${fmtN(sum(null, s.code))}</td>`).join('')}<td class="num">${fmtN(sum('total'))}</td><td class="num">${fmtN(sum('deliverable'))}</td><td class="num">${fmtN(sum('quarantine'))}</td><td class="num">${fmtN(sum('safetyBlocked'))}</td><td class="num">${fmtN(sum('planned'))}</td></tr></tfoot>
       </table></div>
       <h2>Por ubicación</h2>
-      <p class="muted small">${esc(center.name)} → ${esc(config.levels.GREENHOUSE)} → ${esc(config.levels.SECTOR)} → ${esc(config.levels.TABLE)}. La ubicación de cada lote sale de sus movimientos (BR-LOT-11).</p>
+      <p class="muted small">${esc(center.name)} → ${esc(config.levels.GREENHOUSE)} → ${esc(config.levels.SECTOR)} → ${esc(config.levels.TABLE)}. La ubicación de cada lote sale de sus movimientos.</p>
       <div class="tree">${center.children
         .map(
           (gh) => `<section class="greenhouse">
@@ -553,7 +815,7 @@ const views = {
     const allowed = can('DispatchRecorded');
     $app.innerHTML = `
       <h1>Entregas</h1>
-      <p class="muted">Una entrega registra cliente, pedido y una línea por lote. Si una línea no cumple, no se guarda nada (BR-ENT-02).</p>
+      <p class="muted">Una entrega registra cliente, pedido y una línea por lote. Escanea la etiqueta de cada lote para agregarlo. Si una línea no cumple, no se guarda nada.</p>
       ${
         allowed
           ? `<form class="panel stack" id="dispatch">
@@ -565,9 +827,9 @@ const views = {
         </div>
         <div id="lines" class="stack"></div>
         <div class="actions"><button type="button" class="secondary" id="add-line">Agregar lote</button><button class="primary" type="submit">Registrar entrega</button></div>
-        <p class="small muted">Todos los lotes en etapa Listo aparecen para que puedas probar las reglas: cuarentena e intervalo de seguridad se rechazan.</p>
+        <p class="small muted">Un lote en cuarentena o en intervalo de seguridad no se puede entregar.</p>
       </form>`
-          : `<div class="alert amber">El rol de ${esc(currentUser().name)} no registra entregas. Cambia a Encargada de oficina o Dueño.</div>`
+          : `<div class="alert amber">Tu usuario no tiene permiso para registrar entregas.</div>`
       }
       <h2>Entregas registradas</h2>
       <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Cliente</th><th>Pedido</th><th>Lotes</th><th class="num">Plántulas</th></tr></thead>
@@ -583,6 +845,36 @@ const views = {
     };
     addLine();
     document.getElementById('add-line').addEventListener('click', addLine);
+    lines.addEventListener('change', (e) => {
+      if (e.target.name === 'lot') e.target.dataset.touched = '1';
+    });
+    scanHandler = (r) => {
+      if (r.kind !== 'lot') return false;
+      const lot = ready.find((l) => l.id === r.id);
+      if (!lot) {
+        toast(`${r.folio} no está listo para entregar.`, true);
+        return true;
+      }
+      const selects = [...lines.querySelectorAll('select[name="lot"]')];
+      if (
+        selects.some((sel) => sel.value === r.id && (sel.dataset.scanned || sel.dataset.touched))
+      ) {
+        toast(`${r.folio} ya está en la entrega.`);
+        return true;
+      }
+      let target = selects.find((sel) => !sel.dataset.touched && !sel.dataset.scanned);
+      if (!target) {
+        addLine();
+        target = [...lines.querySelectorAll('select[name="lot"]')].pop();
+      }
+      target.value = r.id;
+      target.dataset.scanned = '1';
+      const qty = target.closest('.form-grid').querySelector('input[name="qty"]');
+      qty.max = String(lot.currentQty);
+      qty.focus();
+      toast(`${r.folio} agregado: quedan ${fmtN(lot.currentQty)} plántulas. Captura la cantidad.`);
+      return true;
+    };
     onSubmit(document.getElementById('dispatch'), async (d, form) => {
       const lots = [...form.querySelectorAll('select[name="lot"]')].map((s) => s.value);
       const qtys = [...form.querySelectorAll('input[name="qty"]')].map((i) => Number(i.value));
@@ -607,7 +899,7 @@ const views = {
     const max = Math.max(...r.byCause.map((c) => c.quantity), 1);
     $app.innerHTML = `
       <h1>Mermas</h1>
-      <p class="muted">Cada pérdida lleva causa (BR-LOT-05). El balance de la temporada cuadra plántula por plántula.</p>
+      <p class="muted">Cada pérdida lleva causa. El balance de la temporada cuadra plántula por plántula.</p>
       <div class="cards">
         <div class="card"><div class="label">Sembradas</div><div class="value">${fmtN(r.totals.sown)}</div></div>
         <div class="card"><div class="label">Perdidas</div><div class="value">${fmtN(r.totals.lost)}</div></div>
@@ -626,7 +918,7 @@ const views = {
     const r = await api(`/events?limit=300${status ? `&status=${status}` : ''}`);
     $app.innerHTML = `
       <h1>Eventos</h1>
-      <p class="muted">Todo cambio es un evento inmutable con UUID (ADR-0005). El estado de los lotes se calcula a partir de ellos y se reconstruye igual desde cero.</p>
+      <p class="muted">Todo cambio queda registrado como evento y nunca se modifica. El estado de los lotes se calcula a partir de ellos.</p>
       <div class="toolbar"><select id="status" aria-label="Estado del evento">
         <option value="">Todos (${status ? '' : fmtN(r.total)})</option>
         <option value="APPLIED" ${status === 'APPLIED' ? 'selected' : ''}>Aplicados</option>
@@ -641,13 +933,163 @@ const views = {
     });
   },
 
+  async etiquetas() {
+    const data = await api('/labels');
+    const allowed = can('LabelPrinted');
+    const lots = data.lots.filter((l) => l.active);
+    const printed = (p) =>
+      p.length ? `impresa ${p.length === 1 ? '1 vez' : `${p.length} veces`}` : 'sin imprimir';
+    const tables = data.locations.filter((l) => l.level === 'TABLE');
+    $app.innerHTML = `
+      <h1>Etiquetas</h1>
+      <p class="muted">Etiquetas de lote y de ${esc(config.levels.TABLE.toLowerCase())} con código de barras. Marca las que necesitas o escanéalas para agregarlas.</p>
+      ${allowed ? '' : '<div class="alert amber">Tu usuario no imprime etiquetas.</div>'}
+      <form class="panel stack" id="labels-form">
+        <div class="form-grid">
+          <label class="field">Formato<select name="format">${formatOptions()}</select></label>
+          <label class="field">Copias de cada una<input type="number" name="copies" min="1" max="50" value="1" required></label>
+        </div>
+        <div class="actions"><button class="primary" type="submit" ${allowed ? '' : 'disabled'}>Imprimir <span id="sel-count">0</span> etiquetas</button></div>
+      </form>
+      <div class="grid-2">
+        <div class="panel">
+          <div class="row-head"><h2>Lotes activos</h2><label class="small"><input type="checkbox" data-all="lot"> Todos</label></div>
+          <div class="check-list">${lots
+            .map(
+              (l) =>
+                `<label class="check-row"><input type="checkbox" data-kind="lot" value="${esc(l.id)}"><strong>${esc(l.folio)}</strong><span>${esc(l.variety)} · ${esc(l.location || 'sin ubicación')}</span><span class="small muted">${printed(l.prints)}</span></label>`,
+            )
+            .join('')}</div>
+        </div>
+        <div class="panel">
+          <div class="row-head"><h2>${esc(config.levels.TABLE)}s</h2><label class="small"><input type="checkbox" data-all="location"> Todas</label></div>
+          <div class="check-list">${tables
+            .map(
+              (t) =>
+                `<label class="check-row"><input type="checkbox" data-kind="location" value="${esc(t.id)}"><strong>${esc(t.code)}</strong><span>${esc(t.path)}</span><span class="small muted">${printed(t.prints)}</span></label>`,
+            )
+            .join('')}</div>
+        </div>
+      </div>
+      <h2>Vista previa</h2>
+      <div class="label-preview" id="preview"><p class="muted small">Marca una etiqueta para verla.</p></div>`;
+    const form = document.getElementById('labels-form');
+    const items = () =>
+      [...$app.querySelectorAll('input[data-kind]:checked')].map((box) => {
+        if (box.dataset.kind === 'lot') {
+          const l = data.lots.find((x) => x.id === box.value);
+          return {
+            kind: 'lot',
+            id: l.id,
+            code: l.code,
+            variety: l.variety,
+            sowingDate: l.sowingDate,
+            quantity: l.quantity,
+            trays: l.trays,
+            location: l.location,
+          };
+        }
+        const t = data.locations.find((x) => x.id === box.value);
+        return { kind: 'location', id: t.id, code: t.code, path: t.path, levelLabel: t.levelLabel };
+      });
+    const refresh = () => {
+      const list = items();
+      document.getElementById('sel-count').textContent = String(list.length);
+      const fmt = labelFormat(form.format.value);
+      document.getElementById('preview').innerHTML = list.length
+        ? list
+            .slice(0, 6)
+            .map((it) => labelHtml(it, fmt))
+            .join('') +
+          (list.length > 6 ? `<p class="small muted">y ${list.length - 6} más</p>` : '')
+        : '<p class="muted small">Marca una etiqueta para verla.</p>';
+    };
+    $app.querySelectorAll('input[data-all]').forEach((all) =>
+      all.addEventListener('change', () => {
+        $app
+          .querySelectorAll(`input[data-kind="${all.dataset.all}"]`)
+          .forEach((box) => (box.checked = all.checked));
+        refresh();
+      }),
+    );
+    $app.addEventListener('change', (e) => {
+      if (e.target.matches('input[data-kind], select[name="format"]')) refresh();
+    });
+    scanHandler = (r) => {
+      if (r.kind === 'unknown') return false;
+      const box = $app.querySelector(`input[data-kind="${r.kind}"][value="${r.id}"]`);
+      if (!box) {
+        toast(`${r.code} no tiene etiqueta en esta lista.`, true);
+        return true;
+      }
+      box.checked = true;
+      refresh();
+      toast(`${r.code} agregado a la impresión.`);
+      return true;
+    };
+    onSubmit(form, async (d) => {
+      await printLabels(items(), d.format, d.copies);
+      route();
+    });
+  },
+
+  async admin() {
+    if (!isAdmin()) {
+      $app.innerHTML =
+        '<h1>Administración</h1><div class="alert amber">Solo el Administrador entra a esta sección.</div>';
+      return;
+    }
+    $app.innerHTML = `
+      <h1>Administración</h1>
+      <div class="grid-2">
+        <div class="panel">
+          <h2>Usuarios</h2>
+          <div class="table-wrap"><table><thead><tr><th>Usuario</th><th>Rol</th></tr></thead>
+          <tbody>${config.users.map((u) => `<tr><td>${esc(u.name)}</td><td>${u.roles.map((r) => esc(config.roles[r])).join(', ')}</td></tr>`).join('')}</tbody></table></div>
+        </div>
+        <div class="panel">
+          <h2>Lector de códigos</h2>
+          <p class="small">Las pistolas USB o Bluetooth en modo teclado funcionan sin instalar nada. Para probarla, escanea cualquier etiqueta con esta pantalla abierta.</p>
+          <div class="scan-test" id="scan-test"><span class="muted">Esperando lectura…</span></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Restablecer datos</h2>
+        <p class="small">Regresa la información a la carga inicial. Se pierde lo capturado después.</p>
+        <div class="actions"><button type="button" class="danger" id="reset">Restablecer datos</button></div>
+      </div>`;
+    scanHandler = (r) => {
+      const what =
+        r.kind === 'lot'
+          ? `lote ${r.folio}`
+          : r.kind === 'location'
+            ? r.path
+            : 'código no reconocido';
+      document.getElementById('scan-test').innerHTML =
+        `<strong>${esc(r.code)}</strong> <span class="badge ${r.kind === 'unknown' ? 'red' : 'green'}">${esc(what)}</span>`;
+      return true;
+    };
+    document.getElementById('reset').addEventListener('click', async () => {
+      if (!confirm('¿Restablecer los datos? Se pierde lo capturado después de la carga inicial.'))
+        return;
+      try {
+        await api('/admin/reset', { method: 'POST' });
+        catalog = await api('/catalog');
+        toast('Datos restablecidos.');
+        location.hash = '#/resumen';
+      } catch (err) {
+        toast(errorText(err), true);
+      }
+    });
+  },
+
   async importacion() {
     const r = await api('/import-check');
     const cls = { OK: 'green', ADVERTENCIA: 'amber', ERROR: 'red' };
     const label = { OK: 'Entra', ADVERTENCIA: 'Entra con aviso', ERROR: 'No entra' };
     $app.innerHTML = `
       <h1>Excel "Control de siembra 2026"</h1>
-      <p class="muted">Así se revisaría el Excel actual del productor antes de importarlo: vista previa por fila y nada se guarda sin confirmar (BR-INT-01). Lo que falta no se inventa (BR-INT-03).</p>
+      <p class="muted">Revisión del Excel actual antes de importarlo: vista previa por fila, nada se guarda sin confirmar y lo que falta no se inventa.</p>
       <div class="cards">
         <div class="card"><div class="label">Filas</div><div class="value">${r.totals.rows}</div></div>
         <div class="card"><div class="label">Entran</div><div class="value">${r.totals.ok}</div></div>
@@ -725,6 +1167,7 @@ function renderLotActions(lot) {
       `<label class="field">Destino<select name="toLocationId">${locationOptions(['TABLE']).replace(`value="${lot.location?.id}"`, `value="${lot.location?.id}" disabled`)}</select></label>${dateField()}`,
       (d) =>
         capture('LotTransferred', 'lot', lot.id, { toLocationId: d.toLocationId }, d.operatedAt),
+      'move',
     ]);
   }
   if (sown && can('ApplicationRecorded')) {
@@ -739,9 +1182,7 @@ function renderLotActions(lot) {
         const onSector = d.target === 'sector' && sectorId;
         const product = catalog.products.find((p) => p.id === d.productId);
         if (product?.safetyIntervalDays === null)
-          toast(
-            'El producto no tiene intervalo de seguridad: se registra con advertencia (BR-LAB-02).',
-          );
+          toast('El producto no tiene intervalo de seguridad: se registra con advertencia.');
         return capture(
           'ApplicationRecorded',
           onSector ? 'location' : 'lot',
@@ -788,7 +1229,7 @@ function renderLotActions(lot) {
   if (lot.stage === 'LISTO_VENTA' && can('LotClosed')) {
     items.push([
       'Cerrar lote',
-      `<p class="small muted">El sobrante (${fmtN(lot.currentQty)}) cuenta como merma con causa (UC-ENT-02).</p>
+      `<p class="small muted">El sobrante (${fmtN(lot.currentQty)}) cuenta como merma con causa.</p>
        <label class="field">Causa del sobrante<select name="cause">${config.lossCauses.map((c) => `<option>${esc(c)}</option>`).join('')}</select></label>${dateField()}`,
       (d) => capture('LotClosed', 'lot', lot.id, { cause: d.cause }, d.operatedAt),
     ]);
@@ -802,13 +1243,13 @@ function renderLotActions(lot) {
   }
 
   if (!items.length) {
-    box.innerHTML =
-      '<p class="muted small">Este rol no tiene operaciones para este lote. Cambia el usuario arriba.</p>';
+    box.innerHTML = '<p class="muted small">Tu usuario no tiene operaciones para este lote.</p>';
     return;
   }
-  items.forEach(([title, fields, handler]) => {
+  items.forEach(([title, fields, handler, key]) => {
     const details = document.createElement('details');
     details.className = 'action';
+    if (key) details.dataset.action = key;
     details.innerHTML = `<summary>${esc(title)}</summary><form class="stack"><div class="form-grid">${fields}</div><div class="actions"><button class="primary" type="submit">Guardar</button></div></form>`;
     box.appendChild(details);
     onSubmit(details.querySelector('form'), async (d) => {
@@ -833,6 +1274,8 @@ async function route() {
   const [view, arg] = path.split('/');
   const params = new URLSearchParams(query ?? '');
   const name = views[view] ? view : 'resumen';
+  scanHandler = null;
+  routeSeq++;
   document
     .querySelectorAll('#tabs a')
     .forEach((a) =>
@@ -841,53 +1284,77 @@ async function route() {
   try {
     await views[name](params, arg ? decodeURIComponent(arg) : undefined);
   } catch (err) {
+    if (err instanceof StaleView) return;
     $app.innerHTML = `<div class="alert red">${esc(errorText(err))}</div>`;
   }
+}
+
+function showLogin() {
+  document.getElementById('shell').hidden = true;
+  document.getElementById('login').hidden = false;
+  const box = document.getElementById('login-users');
+  box.innerHTML = config.users
+    .map(
+      (u) =>
+        `<button type="button" class="login-user" data-user="${esc(u.id)}"><strong>${esc(u.name)}</strong><span class="small muted">${u.roles.map((r) => esc(config.roles[r])).join(', ')}</span></button>`,
+    )
+    .join('');
+  box.querySelectorAll('[data-user]').forEach((b) =>
+    b.addEventListener('click', () => {
+      sessionUser = b.dataset.user;
+      store.set('sesion', sessionUser);
+      enterApp();
+    }),
+  );
+  box.querySelector('button')?.focus();
+}
+
+function enterApp() {
+  const u = currentUser();
+  document.getElementById('login').hidden = true;
+  document.getElementById('shell').hidden = false;
+  document.getElementById('session-name').textContent = u.name;
+  document.getElementById('session-role').textContent = u.roles
+    .map((r) => config.roles[r])
+    .join(', ');
+  document.getElementById('tab-admin').hidden = !isAdmin();
+  route();
 }
 
 async function init() {
   config = await api('/config');
   catalog = await api('/catalog');
-  document.getElementById('producer').textContent = config.producer.name;
-  document.getElementById('today').textContent = `Hoy: ${fmtDate(config.today)} (hora de México)`;
-  $user.innerHTML = config.users
-    .map(
-      (u) =>
-        `<option value="${esc(u.id)}">${esc(u.name)} · ${u.roles.map((r) => esc(config.roles[r])).join(', ')}</option>`,
-    )
-    .join('');
-  $user.value = store.get('demo-user', 'jefe');
-  if (!$user.value) $user.value = config.users[0].id;
-  const syncUser = () => {
-    store.set('demo-user', $user.value);
-    $reset.hidden = !currentUser().permissions.includes('*');
-  };
-  $user.addEventListener('change', () => {
-    syncUser();
-    route();
+  document
+    .querySelectorAll('[data-producer]')
+    .forEach((el) => (el.textContent = config.producer.name));
+  document.title = `Trazabilidad de plántula · ${config.producer.name}`;
+  document.getElementById('today').textContent = `Hoy: ${fmtDate(config.today)}`;
+  window.addEventListener('hashchange', () => sessionUser && route());
+  window.addEventListener('afterprint', () => ($print.innerHTML = ''));
+  Escaner.attach((code) => sessionUser && onScan(code));
+  const scanForm = document.getElementById('scan-form');
+  scanForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const input = document.getElementById('scan-input');
+    const code = input.value;
+    input.value = '';
+    onScan(code);
   });
-  syncUser();
-  $reset.addEventListener('click', async () => {
-    if (
-      !confirm(
-        '¿Regresar el demo a los datos iniciales del caso Productor A? Se pierde lo capturado en esta prueba.',
-      )
-    )
-      return;
-    try {
-      await api('/demo/reset', { method: 'POST' });
-      catalog = await api('/catalog');
-      toast('Demo de regreso a los datos iniciales.');
-      location.hash = '#/resumen';
-      route();
-    } catch (err) {
-      toast(errorText(err), true);
-    }
+  document.getElementById('logout').addEventListener('click', () => {
+    sessionUser = null;
+    store.set('sesion', '');
+    location.hash = '#/resumen';
+    showLogin();
   });
-  window.addEventListener('hashchange', route);
-  await route();
+  setupCamera();
+  const saved = store.get('sesion', '');
+  if (saved && config.users.some((u) => u.id === saved)) {
+    sessionUser = saved;
+    enterApp();
+  } else showLogin();
 }
 
 init().catch((err) => {
-  $app.innerHTML = `<div class="alert red">No se pudo abrir el demo: ${esc(err.message)}</div>`;
+  $app.innerHTML = `<div class="alert red">No se pudo abrir la aplicación: ${esc(err.message)}</div>`;
+  document.getElementById('shell').hidden = false;
 });
