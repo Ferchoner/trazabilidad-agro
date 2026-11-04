@@ -120,7 +120,7 @@ Fuera del alcance:
 4. Agregar P-42 en PROGRESS.
 5. Dominio:
    - charolas en la proyección;
-   - eventos `TraysTransferred` y `CavitiesMarked`;
+   - eventos `TraysTransferred` y `CavitiesMarked` (en la implementación, el movimiento por charola quedó como `LotTransferred` con detalle de charolas; ver ADR-0024);
    - `LossRecorded` y `DispatchRecorded` con detalle opcional por charola;
    - ubicación del lote como conjunto de mesas.
    - Pruebas, incluida la reconstrucción desde cero.

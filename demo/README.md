@@ -26,31 +26,32 @@ En Windows: doble clic en `INICIAR_DEMO.bat`.
 
 ## Etiquetas y lector de códigos (ADR-0014, ADR-0023)
 
-- Etiquetas de lote (código = folio) y de tabla (código = `INV1-A-M1`) con Code 128, generadas en el navegador sin Internet.
+- Etiquetas de lote (código = folio), de charola (código = `L-0818-C05`, ADR-0024) y de tabla (código = `INV1-A-M1`) con Code 128, generadas en el navegador sin Internet.
 - Formatos: térmica 100 × 50 mm, rollo térmico de 80 mm (80 × 50), rollo térmico de 58 mm (58 × 40) y hoja carta con 10 etiquetas de 4 × 2 pulgadas. Se imprime con el diálogo del sistema: elegir la impresora, márgenes "Ninguno" y escala 100 %. En una térmica, el tamaño de papel del controlador debe coincidir con el formato.
-- Cada impresión queda como evento `LabelPrinted` en la historia del lote.
-- Pistola USB o Bluetooth en modo teclado (con Enter al final): funciona en cualquier pantalla sin instalar nada. Lote → abre su ficha; en la ficha, tabla → destino del movimiento; en Registrar lote, tabla → ubicación; en Entregas, lote → nueva línea; en Etiquetas, lo agrega a la impresión. Sin pistola, el código se escribe en "Escanear o escribir código" y Enter.
+- Cada impresión queda como evento `LabelPrinted` en la historia del lote; las de varias charolas de un lote van en un solo evento.
+- Pistola USB o Bluetooth en modo teclado (con Enter al final): funciona en cualquier pantalla sin instalar nada. Lote → abre su ficha; charola → abre su mapa de cavidades; en la ficha, charola del lote → la marca para mover o imprimir y tabla → destino del movimiento; en Registrar lote, tabla → ubicación; en Entregas, charola → se suma con sus plántulas a la línea de su lote, y lote → nueva línea; en Etiquetas, lo agrega a la impresión. Sin pistola, el código se escribe en "Escanear o escribir código" y Enter.
 - Cámara: solo en navegadores con lector de códigos (Chrome o Edge en Android y macOS) y en contexto seguro (`127.0.0.1` o HTTPS, P-06).
 
 ## Qué muestra
 
-| Pantalla       | Qué enseña                                                                                               | Reglas                              |
-| -------------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------- |
-| Resumen        | Indicadores y lotes que piden atención hoy                                                               | —                                   |
-| Lotes          | Estado en tres ejes: etapa, retención y situación comercial calculada                                    | ADR-0009                            |
-| Ficha del lote | Origen, ubicaciones en el tiempo, aplicaciones, entregas, historia de eventos y operaciones según el rol | UC-LOT-08, UC-REP-04, ADR-0012      |
-| Registrar lote | Folio corto, cavidades, fecha de la operación                                                            | ADR-0010, BR-LOT-03, BR-EVT-06      |
-| Inventario     | Por variedad y etapa, separando cuarentena e intervalo; por invernadero, sector y tabla                  | UC-REP-01, BR-LOT-11                |
-| Entregas       | Varios lotes por pedido; se rechaza todo si una línea no cumple                                          | BR-ENT-01, 02, BR-CAL-01, BR-LAB-03 |
-| Mermas         | Por causa y por lote                                                                                     | UC-REP-02                           |
-| Eventos        | Bitácora inmutable con anulaciones y conflictos                                                          | ADR-0005, ADR-0011, ADR-0013        |
-| Etiquetas      | Etiquetas de lote y tabla en cuatro formatos, con su historial de impresión                              | ADR-0023, UC-IDE-03                 |
-| Administración | Usuarios, prueba del lector y restablecer datos                                                          | ADR-0022                            |
-| Excel 2026     | Vista previa de las 11 filas del Excel del productor: 7 entran (4 con aviso) y 4 no                      | BR-INT-01 a 05                      |
+| Pantalla       | Qué enseña                                                                                                              | Reglas                              |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| Resumen        | Indicadores y lotes que piden atención hoy                                                                              | —                                   |
+| Lotes          | Estado en tres ejes: etapa, retención y situación comercial calculada                                                   | ADR-0009                            |
+| Ficha del lote | Origen, ubicaciones en el tiempo, aplicaciones, entregas, historia de eventos y operaciones según el rol                | UC-LOT-08, UC-REP-04, ADR-0012      |
+| Charolas       | En la ficha: charolas por tabla, mover o imprimir las marcadas y mapa de cavidades con pérdida, observación y resiembra | ADR-0024, BR-CHA-01 a 04            |
+| Registrar lote | Folio corto, cavidades, fecha de la operación; la cantidad viene con el máximo (charolas × cavidades)                   | ADR-0010, BR-LOT-03, BR-EVT-06      |
+| Inventario     | Por variedad y etapa, separando cuarentena e intervalo; por invernadero, sector, tabla, lote y charolas                 | UC-REP-01, BR-LOT-11                |
+| Entregas       | Varios lotes por pedido, por charolas escaneadas o por cantidad; se rechaza todo si una línea no cumple                 | BR-ENT-01, 02, BR-CAL-01, BR-LAB-03 |
+| Mermas         | Por causa y por lote                                                                                                    | UC-REP-02                           |
+| Eventos        | Bitácora inmutable con anulaciones y conflictos                                                                         | ADR-0005, ADR-0011, ADR-0013        |
+| Etiquetas      | Etiquetas de lote, charola y tabla en cuatro formatos, con su historial de impresión                                    | ADR-0023, UC-IDE-03                 |
+| Administración | Usuarios, prueba del lector y restablecer datos                                                                         | ADR-0022                            |
+| Excel 2026     | Vista previa de las 11 filas del Excel del productor: 7 entran (4 con aviso) y 4 no                                     | BR-INT-01 a 05                      |
 
 ## Simplificaciones del demo (no del producto)
 
-Un solo nodo y un solo bloque de folios (P-11); inicio de sesión sin PIN (P-40); proyecciones en memoria reconstruidas desde los eventos al arrancar; sin charolas individuales ni etiquetas de charola (el Productor A traza por lote, P-14); impresión por el diálogo del sistema, sin lenguaje de impresora (T-131); sin división, resiembra, sincronización, captura sin señal ni respaldos. Lo que no demuestra sigue en T-008.
+Un solo nodo y un solo bloque de folios (P-11); inicio de sesión sin PIN (P-40); proyecciones en memoria reconstruidas desde los eventos al arrancar; trazabilidad por charola siempre activa, aunque el Productor A traza hoy por lote (en el producto lo elige cada productor, P-14); sin identificador por plántula; resiembra solo dentro del mismo lote (entre lotes, P-13); cuarentena y aplicaciones por lote (P-42); impresión por el diálogo del sistema, sin lenguaje de impresora (T-131); sin división, sincronización, captura sin señal ni respaldos. Lo que no demuestra sigue en T-008.
 
 ## Estructura
 
