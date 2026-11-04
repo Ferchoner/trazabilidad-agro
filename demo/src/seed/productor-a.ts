@@ -4,6 +4,7 @@
 
 import { buildEvent, EventDraft } from '../application/event-factory';
 import { addDays } from '../domain/dates';
+import { trayCode } from '../domain/projection';
 import { ProducerConfig, TraceEvent } from '../domain/types';
 import { uuidFrom } from '../platform/ids';
 
@@ -228,8 +229,24 @@ export function buildProductorASeed(config: ProducerConfig): TraceEvent[] {
       material: 'sanandreas-bp',
     },
   ];
+  // Modelo local de las charolas para repartir pérdidas, resiembras y entregas por charola
+  // (ADR-0024) sin cambiar los totales del caso: 10,270 sembradas, 312 perdidas, 1,900 entregadas.
+  interface SeedTray {
+    code: string;
+    qty: number;
+    sown: number;
+    lost: number[];
+  }
+  const trayModel = new Map<string, SeedTray[]>();
   let minute = 0;
   for (const l of lots) {
+    trayModel.set(
+      l.folio,
+      Array.from({ length: l.trays }, (_, i) => {
+        const sown = Math.max(0, Math.min(l.cavities, l.qty - i * l.cavities));
+        return { code: trayCode(l.folio, i + 1, l.trays), qty: sown, sown, lost: [] };
+      }),
+    );
     const lotId = seedLotId(l.folio);
     const occurredAt = at(l.date, `17:${String(minute++ * 2).padStart(2, '0')}`);
     push({
@@ -328,8 +345,40 @@ export function buildProductorASeed(config: ProducerConfig): TraceEvent[] {
       userId: 'oficina',
       deviceId: 'pc-oficina',
     });
-  /** Pérdida de la hoja de campo: la oficina la captura el lunes siguiente con la fecha real. */
-  const loss = (date: string, folio: string, quantity: number, cause: string) =>
+  const tray = (folio: string, index: number) => trayModel.get(folio)![index - 1];
+  /** Cavidades con plántula repartidas en la charola, siempre las mismas para el mismo caso. */
+  const pickCavities = (t: SeedTray, count: number): number[] => {
+    const out: number[] = [];
+    const taken = (c: number) => t.lost.includes(c) || out.includes(c);
+    if (t.sown - t.lost.length < count) throw new Error(`Sin cavidades libres en ${t.code}`);
+    let pos = (Number(t.code.slice(-2)) * 5) % t.sown;
+    while (out.length < count) {
+      pos = ((pos + 12) % t.sown) + 1;
+      while (taken(pos)) pos = (pos % t.sown) + 1;
+      out.push(pos);
+    }
+    return out.sort((a, b) => a - b);
+  };
+  /**
+   * Pérdida de la hoja de campo: la oficina la captura el lunes siguiente con la fecha real,
+   * con las charolas y cavidades que anotó el jefe.
+   */
+  const loss = (
+    date: string,
+    folio: string,
+    quantity: number,
+    cause: string,
+    detail: [index: number, count: number][],
+  ) => {
+    const trays = detail.map(([index, count]) => {
+      const t = tray(folio, index);
+      const cavities = pickCavities(t, count);
+      t.qty -= count;
+      t.lost.push(...cavities);
+      return { code: t.code, quantity: count, cavities };
+    });
+    if (trays.reduce((a, t) => a + t.quantity, 0) !== quantity)
+      throw new Error(`Pérdida de ${folio} no cuadra`);
     push({
       type: 'LossRecorded',
       entityType: 'lot',
@@ -338,8 +387,45 @@ export function buildProductorASeed(config: ProducerConfig): TraceEvent[] {
       operatedAt: date,
       userId: 'oficina',
       deviceId: 'pc-oficina',
-      payload: { quantity, cause },
+      payload: { quantity, cause, trays },
     });
+  };
+  /** Línea de entrega por charolas escaneadas: llenas primero, en orden. */
+  const dispatchLine = (folio: string, quantity: number) => {
+    let left = quantity;
+    const trays: { code: string; quantity: number }[] = [];
+    for (const t of trayModel.get(folio)!) {
+      if (left === 0) break;
+      const take = Math.min(t.qty, left);
+      if (take === 0) continue;
+      t.qty -= take;
+      left -= take;
+      trays.push({ code: t.code, quantity: take });
+    }
+    if (left !== 0) throw new Error(`Entrega de ${folio} sin plántulas suficientes`);
+    return { lotId: seedLotId(folio), quantity, trays };
+  };
+  /** Resiembra dentro del lote: cavidades perdidas de una charola con plántula de otra. */
+  const reseed = (
+    date: string,
+    folio: string,
+    toIndex: number,
+    count: number,
+    fromIndex: number,
+  ) => {
+    const to = tray(folio, toIndex);
+    const from = tray(folio, fromIndex);
+    const cavities = to.lost.slice(0, count).sort((a, b) => a - b);
+    to.lost = to.lost.filter((c) => !cavities.includes(c));
+    to.qty += count;
+    from.qty -= count;
+    jefe(date, '10:30', {
+      type: 'CavitiesMarked',
+      entityType: 'lot',
+      entityId: seedLotId(folio),
+      payload: { tray: to.code, cavities, mark: 'RESEMBRADA', fromTray: from.code },
+    });
+  };
   const stage = (
     date: string,
     folio: string,
@@ -355,7 +441,12 @@ export function buildProductorASeed(config: ProducerConfig): TraceEvent[] {
     });
   const enraizado = 'Raíz formada, unas 3 semanas';
 
-  loss('2026-08-14', 'L-0812', 35, 'No pegó');
+  loss('2026-08-14', 'L-0812', 35, 'No pegó', [
+    [3, 12],
+    [7, 8],
+    [11, 10],
+    [20, 5],
+  ]);
   stage('2026-08-24', 'L-0812', 'ENRAIZADO', enraizado);
   stage('2026-08-24', 'L-0813', 'ENRAIZADO', enraizado);
   stage('2026-08-31', 'L-0814', 'ENRAIZADO', enraizado);
@@ -365,10 +456,19 @@ export function buildProductorASeed(config: ProducerConfig): TraceEvent[] {
     entityId: seedLotId('L-0817'),
     payload: { toLocationId: seedLocationId('INV2-A-M3'), note: 'Se confirma la mesa' },
   });
-  loss('2026-09-02', 'L-0815', 60, 'No pegó');
-  loss('2026-09-03', 'L-0814', 12, 'Daño mecánico');
-  loss('2026-09-04', 'L-0817', 5, 'No pegó');
+  loss('2026-09-02', 'L-0815', 60, 'No pegó', [
+    [2, 20],
+    [6, 25],
+    [11, 15],
+  ]);
+  loss('2026-09-03', 'L-0814', 12, 'Daño mecánico', [
+    [5, 7],
+    [6, 5],
+  ]);
+  loss('2026-09-04', 'L-0817', 5, 'No pegó', [[10, 5]]);
   stage('2026-09-07', 'L-0815', 'ENRAIZADO', enraizado);
+  // Resiembra (1 de cada 20 charolas): la charola incompleta del lote llena huecos de otra.
+  reseed('2026-09-08', 'L-0815', 2, 10, 15);
   jefe('2026-09-10', '09:00', {
     type: 'ApplicationRecorded',
     entityType: 'location',
@@ -382,7 +482,11 @@ export function buildProductorASeed(config: ProducerConfig): TraceEvent[] {
   });
   stage('2026-09-14', 'L-0816', 'ENRAIZADO', enraizado);
   stage('2026-09-14', 'L-0817', 'ENRAIZADO', enraizado);
-  loss('2026-09-18', 'L-0818', 40, 'No pegó');
+  loss('2026-09-18', 'L-0818', 40, 'No pegó', [
+    [1, 9],
+    [8, 16],
+    [14, 15],
+  ]);
   // Un movimiento capturado en el lote equivocado: se anula y se captura el correcto (ADR-0011).
   const wrongTransferN = n + 1;
   jefe('2026-09-21', '10:00', {
@@ -406,7 +510,10 @@ export function buildProductorASeed(config: ProducerConfig): TraceEvent[] {
       reason: 'Se capturó en el lote equivocado; el que se movió fue L-0816',
     },
   });
-  loss('2026-09-21', 'L-0816', 40, 'Daño mecánico');
+  loss('2026-09-21', 'L-0816', 40, 'Daño mecánico', [
+    [21, 22],
+    [22, 18],
+  ]);
   stage('2026-09-28', 'L-0818', 'ENRAIZADO', enraizado);
   jefe('2026-09-28', '09:00', {
     type: 'ApplicationRecorded',
@@ -417,6 +524,17 @@ export function buildProductorASeed(config: ProducerConfig): TraceEvent[] {
       productId: seedProductId('abamectina'),
       dose: '0.5 mL/L',
       reason: 'Araña roja, recomendado por el agrónomo',
+    },
+  });
+  // Movimiento parcial: 4 charolas de L-0818 pasan a la mesa de al lado; el lote queda en 2 mesas.
+  jefe('2026-10-02', '08:30', {
+    type: 'LotTransferred',
+    entityType: 'lot',
+    entityId: seedLotId('L-0818'),
+    payload: {
+      toLocationId: seedLocationId('INV2-B-M3'),
+      trays: [13, 14, 15, 16].map((i) => tray('L-0818', i).code),
+      note: 'Separar la charola incompleta y las de más pérdida',
     },
   });
   dueno('2026-09-30', '11:50', {
@@ -434,7 +552,7 @@ export function buildProductorASeed(config: ProducerConfig): TraceEvent[] {
     payload: {
       customer: 'Rancho El Sauz',
       order: 'P-101',
-      lines: [{ lotId: seedLotId('L-0812'), quantity: 900 }],
+      lines: [dispatchLine('L-0812', 900)],
     },
   });
   jefe('2026-10-08', '11:00', {
@@ -455,7 +573,13 @@ export function buildProductorASeed(config: ProducerConfig): TraceEvent[] {
     entityId: seedLotId('L-0816'),
     payload: { productId: seedProductId('cuprico'), dose: '2 g/L', reason: 'Antracnosis' },
   });
-  loss('2026-10-09', 'L-0816', 120, 'Plaga o enfermedad');
+  loss('2026-10-09', 'L-0816', 120, 'Plaga o enfermedad', [
+    [4, 24],
+    [5, 24],
+    [9, 24],
+    [10, 24],
+    [15, 24],
+  ]);
   oficina('2026-10-13', '09:00', {
     type: 'DispatchRecorded',
     entityType: 'dispatch',
@@ -463,13 +587,21 @@ export function buildProductorASeed(config: ProducerConfig): TraceEvent[] {
     payload: {
       customer: 'Agrícola Los Pinos',
       order: 'P-102',
-      lines: [
-        { lotId: seedLotId('L-0812'), quantity: 465 },
-        { lotId: seedLotId('L-0813'), quantity: 535 },
-      ],
+      lines: [dispatchLine('L-0812', 465), dispatchLine('L-0813', 535)],
     },
   });
   stage('2026-10-14', 'L-0814', 'LISTO_VENTA', 'Recorrido del dueño', 'dueno');
+  dueno('2026-10-14', '12:20', {
+    type: 'CavitiesMarked',
+    entityType: 'lot',
+    entityId: seedLotId('L-0818'),
+    payload: {
+      tray: tray('L-0818', 5).code,
+      cavities: pickCavities(tray('L-0818', 5), 3),
+      mark: 'OBSERVADA',
+      note: 'Hojas amarillas, revisar en el próximo recorrido',
+    },
+  });
   jefe('2026-10-15', '09:00', {
     type: 'ApplicationRecorded',
     entityType: 'location',

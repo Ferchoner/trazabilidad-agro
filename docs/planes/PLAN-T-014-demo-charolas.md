@@ -1,6 +1,6 @@
 # PLAN T-014: Inventario y acciones por lote, charola y plántula (análisis y plan)
 
-Estado: **propuesta, pendiente de aprobación de Fernando** (`AI_WORKFLOW.md`). No se escribe código hasta aprobarlo.
+Estado: **aprobado por Fernando el 2026-11-04** con dos cambios: se descarta el bloque (se pasa de lote a charola) y, donde se registran plántulas por lote, la cantidad viene prellenada con el máximo (charolas × cavidades), porque casi siempre se usan todas las cavidades, y el máximo queda marcado en cuanto se capturan charolas y cavidades (§4, función 10). El resto, con las recomendaciones de este análisis.
 Origen: mensaje de Fernando del 2026-11-04: ver el inventario y las acciones por lote, dentro del lote por bloques o charolas y, si es posible, por plántula dentro de la charola, con análisis de costo y viabilidad.
 Decisiones relacionadas: ADR-0004 (el lote es la unidad central; charola como posible nivel adicional), ADR-0014 (identificación), ADR-0023 (etiquetas), P-14 (lote, charola o ambos), P-16 (unidad de conteo), BR-CHA-01 a 04, UC-LOT-04, UC-IDE-03.
 
@@ -9,7 +9,7 @@ Decisiones relacionadas: ADR-0004 (el lote es la unidad central; charola como po
 | Nivel | ¿Viable? | Costo principal | Recomendación |
 |---|---|---|---|
 | Lote | Ya está | — | Se queda como unidad central (ADR-0004) |
-| Bloque (grupo de charolas) | Sí | Casi nulo: no pide etiquetas nuevas | Se resuelve como **rango de charolas** del lote ("C01 a C10"), sin entidad nueva |
+| Bloque (grupo de charolas) | Sí | Casi nulo: no pide etiquetas nuevas | **Descartado por Fernando (2026-11-04)**: se pasa de lote a charola |
 | Charola | Sí | Una etiqueta resistente por charola, que se reutiliza; un escaneo por charola en cada operación | **Implementarlo en el demo** y dejarlo configurable por productor (P-14) |
 | Plántula con identificador propio | No | Una etiqueta o chip por plántula y un escaneo por plántula; la trazabilidad se corta al entregar | **No implementarlo** |
 | Plántula por posición en la charola (cavidad) | Sí, para excepciones | Marcar en un mapa de la charola solo las cavidades con algo que contar | **Implementarlo en el demo** como mapa de cavidades |
@@ -88,12 +88,13 @@ Lo que sí da detalle dentro de la charola, sin identificadores:
 | 1 | Al sembrar, el lote crea sus charolas `FOLIO-C01…Cnn` con sus cavidades y plántulas; la última puede ir incompleta | BR-CHA-01, BR-CHA-03, BR-LOT-03 |
 | 2 | Ficha del lote con pestaña **Charolas**: cada charola con mesa, plántulas, pérdidas y estado; filtros por mesa | UC-LOT-08 |
 | 3 | **Inventario** con un nivel más: invernadero → sector → mesa → lote → charolas | UC-REP-01 |
-| 4 | **Mover charolas**: todas o un rango ("bloque") a otra mesa, escaneando la mesa destino. Un lote puede quedar repartido en varias mesas | UC-LOT-04, BR-LOT-11 |
+| 4 | **Mover charolas**: todas o las elegidas (marcadas o escaneadas) a otra mesa, escaneando la mesa destino. Un lote puede quedar repartido en varias mesas | UC-LOT-04, BR-LOT-11 |
 | 5 | **Pérdida por charola**, con causa, y opcionalmente las cavidades en el mapa | BR-LOT-05 |
 | 6 | **Mapa de cavidades** en la charola: vacía, perdida, resembrada, observada | BR-CHA-04 (resiembra, solo dentro del mismo lote en el demo) |
 | 7 | **Entrega por charolas**: escanear las charolas del pedido suma sus plántulas a la línea del lote | BR-ENT-01, 02 |
 | 8 | **Etiqueta de charola** en los cuatro formatos de ADR-0023, con código Code 128 `L-0812-C01`; la pistola la reconoce en cualquier pantalla | ADR-0014, ADR-0023, UC-IDE-03 |
 | 9 | Los datos del caso Productor A se cargan con sus 121 charolas, y pérdidas, movimientos y entregas repartidos por charola | ADR-0017 |
+| 10 | Al registrar plántulas por lote (Registrar lote y Sembrar), la cantidad viene **prellenada con el máximo** (charolas × cavidades), que se recalcula al cambiar charolas o cavidades y queda marcado junto a la cantidad; se puede bajar, pero no pasarlo | BR-LOT-03 |
 
 Fuera del alcance:
 - resiembra entre lotes (P-13);
@@ -104,7 +105,7 @@ Fuera del alcance:
 
 ## 5. Decisiones por defecto (cámbialas si no te sirven)
 
-1. **Bloque = rango de charolas** del mismo lote, sin entidad nueva. Si "bloque" es otra cosa en tus clientes (por ejemplo, un tramo de mesa con su propia estaca), dímelo.
+1. ~~Bloque = rango de charolas~~: descartado; de lote se pasa a charola.
 2. **Cuarentena y aplicaciones siguen por lote** (BR-CAL-01, ADR-0012). Una aplicación en una mesa bloquea la entrega de todo lote que tenga alguna charola ahí; es la opción conservadora. Bloquear solo las charolas tratadas queda como **PENDIENTE DE DECISIÓN (P-42)** para el producto.
 3. **El lote sigue mandando en las cantidades.** Una pérdida o entrega capturada sin charola, incluidos los eventos ya guardados (regla 12), queda en "sin charola asignada" y no se reparte inventando datos.
 4. **En el demo, por charola siempre activo.** En el producto, cada productor elige lote, charola o ambos (P-14, ADR-0015); Productor A dijo "no por ahora".
@@ -115,7 +116,7 @@ Fuera del alcance:
 
 1. Rama nueva desde `main`.
 2. T-014 en TASKS con criterios.
-3. ADR-0024 (propuesta): "El demo traza por charola y por posición de cavidad, sin identificador por plántula".
+3. ADR-0024 (aceptada para el demo): "El demo traza por charola y por posición de cavidad, sin identificador por plántula".
 4. Agregar P-42 en PROGRESS.
 5. Dominio:
    - charolas en la proyección;

@@ -306,3 +306,14 @@ Reemplazada parcialmente por ADR-0002 a ADR-0006 (2026-10-18). Sigue vigente par
 - **Alternativas consideradas:** Impresión directa en lenguaje de impresora (ZPL, TSPL), que exige un servicio local por marca y queda para el MVP (T-131); QR, que obliga a una pistola 2D; una librería de códigos desde CDN, que rompe la operación sin Internet.
 - **Consecuencias:** Funciona con cualquier impresora con controlador de Windows; los márgenes y la escala dependen del controlador, y la guía indica cómo ajustarlos. Aplica al demo; para el producto la retoma T-131.
 - **Estado:** Aceptada para el demo (2026-10-23, Fernando, plan T-013).
+
+---
+
+## ADR-0024 — El demo traza por charola y por posición de cavidad, sin identificador por plántula
+
+- **Fecha:** 2026-11-04
+- **Contexto:** Fernando pidió el 2026-11-04 ver el inventario y las acciones por lote, por charola y, si es posible, por plántula, con análisis de costo y viabilidad (`planes/PLAN-T-014-demo-charolas.md`). ADR-0004 deja la charola como posible nivel adicional (P-14). En el caso Productor A las charolas no tienen etiqueta, se mueven seguido sin registro, se resiembra 1 de cada 20 y se entrega contando charolas.
+- **Decisión:** En el demo, cada lote sembrado tiene sus charolas con código `FOLIO-Cnn` (BR-CHA-03), su mesa y sus cantidades. Movimientos, pérdidas, entregas y etiquetas pueden ser por charola; el lote sigue siendo la unidad central y manda en las cantidades. Dentro de la charola no hay identificador por plántula: un mapa de cavidades marca solo las excepciones (pérdida, observada, resembrada dentro del mismo lote). Se descarta el nivel "bloque". Al capturar charolas y cavidades, la cantidad sembrada viene prellenada con el máximo (charolas × cavidades) y se muestra ese máximo. Cuarentena y aplicaciones siguen por lote; una aplicación en una mesa alcanza a todo lote con alguna charola ahí (bloquear solo charolas tratadas: P-42). Lo capturado sin charola, incluidos los eventos ya guardados, queda como "sin charola asignada".
+- **Alternativas consideradas:** Identificador por plántula (más de 10 mil por temporada, un escaneo por plántula y la trazabilidad se corta al trasplantar); bloque como grupo de charolas (descartado por Fernando); solo lote (no muestra el detalle pedido).
+- **Consecuencias:** Un lote puede estar en varias mesas. Para el producto, cada productor elige lote, charola o ambos (P-14, T-123) y el código físico reutilizable de charola (BR-CHA-02) queda en T-123.
+- **Estado:** Aceptada para el demo (2026-11-04, Fernando).

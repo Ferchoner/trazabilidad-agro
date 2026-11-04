@@ -13,6 +13,7 @@ import {
   TERMINAL_STAGES,
   TraceEvent,
   TraceState,
+  Tray,
 } from './types';
 
 type Handler = (state: TraceState, event: TraceEvent, config: ProducerConfig) => void;
@@ -121,14 +122,133 @@ export function locationAt(lot: Lot, date: string): string | null {
   return found;
 }
 
+// ---------- charolas (ADR-0024) ----------
+
+/** Código de charola generado del folio (BR-CHA-03): L-0812-C01. */
+export function trayCode(folio: string, index: number, total: number): string {
+  return `${folio}-C${String(index).padStart(Math.max(2, String(total).length), '0')}`;
+}
+
+/** Mesa de la charola en una fecha, según sus movimientos. */
+export function trayLocationAt(tray: Tray, date: string): string | null {
+  let found: string | null = null;
+  for (const h of tray.locationHistory) if (h.from <= date) found = h.locationId;
+  return found;
+}
+
+export function lotTrays(state: TraceState, lot: Lot): Tray[] {
+  return lot.trayCodes.map((c) => state.trays.get(c)!).filter(Boolean);
+}
+
+/** Dónde está el lote en una fecha: las mesas de sus charolas o, sin charolas, su ubicación. */
+export function lotLocationsAt(state: TraceState, lot: Lot, date: string): string[] {
+  const trays = lotTrays(state, lot);
+  if (!trays.length) {
+    const at = locationAt(lot, date);
+    return at === null ? [] : [at];
+  }
+  return [...new Set(trays.map((t) => trayLocationAt(t, date)).filter((x) => x !== null))];
+}
+
+/** Ubicación principal del lote: la mesa con más plántulas de sus charolas. */
+function refreshLotLocation(state: TraceState, lot: Lot): void {
+  const trays = lotTrays(state, lot);
+  if (!trays.length) return;
+  const byLoc = new Map<string, number>();
+  for (const t of trays) byLoc.set(t.locationId, (byLoc.get(t.locationId) ?? 0) + t.currentQty);
+  let best = trays[0].locationId;
+  for (const [id, qty] of byLoc) if (qty > (byLoc.get(best) ?? 0)) best = id;
+  lot.locationId = best;
+}
+
+function setTrayLocation(tray: Tray, locationId: string, date: string, eventId: string): void {
+  tray.locationHistory.push({ locationId, from: date, eventId });
+  tray.locationHistory.sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0));
+  tray.locationId = tray.locationHistory[tray.locationHistory.length - 1].locationId;
+}
+
+function getTray(state: TraceState, lot: Lot, code: unknown): Tray {
+  const tray = typeof code === 'string' ? state.trays.get(code.trim().toUpperCase()) : undefined;
+  if (!tray || tray.lotId !== lot.id)
+    fail('BR-CHA-01', `La charola ${String(code)} no es del lote ${lot.folio}.`);
+  return tray;
+}
+
+/** ¿Hay plántula en esa cavidad? Sin marca: las primeras `sownQty` se sembraron. */
+export function cavityHasPlant(tray: Tray, pos: number): boolean {
+  const m = tray.marks[pos]?.mark;
+  if (m === 'PERDIDA') return false;
+  if (m === 'OBSERVADA' || m === 'RESEMBRADA') return true;
+  return pos <= tray.sownQty;
+}
+
+function parseCavities(tray: Tray, raw: unknown, code: string): number[] {
+  if (!Array.isArray(raw) || raw.length === 0) fail(code, 'Marca al menos una cavidad.');
+  const seen = new Set<number>();
+  for (const v of raw) {
+    if (typeof v !== 'number' || !Number.isInteger(v) || v < 1 || v > tray.cavities)
+      fail(code, `La charola ${tray.code} tiene cavidades de 1 a ${tray.cavities}.`);
+    if (seen.has(v)) fail(code, `La cavidad ${v} se repite.`);
+    seen.add(v);
+  }
+  return [...seen];
+}
+
+interface TrayLine {
+  tray: Tray;
+  quantity: number;
+  cavities: number[] | null;
+}
+
+/** Detalle opcional por charola de una pérdida o entrega; null si se capturó solo por lote. */
+function parseTrayLines(
+  state: TraceState,
+  lot: Lot,
+  raw: unknown,
+  total: number,
+  code: string,
+  allowCavities: boolean,
+): TrayLine[] | null {
+  if (raw === undefined || raw === null) return null;
+  if (!Array.isArray(raw) || raw.length === 0) fail(code, 'Indica al menos una charola.');
+  const seen = new Set<string>();
+  const lines = raw.map((r: unknown) => {
+    const line = (r ?? {}) as Record<string, unknown>;
+    const tray = getTray(state, lot, line.code);
+    if (seen.has(tray.code)) fail(code, `La charola ${tray.code} se repite.`);
+    seen.add(tray.code);
+    const quantity = positiveInt(line, 'quantity', code, `La cantidad de ${tray.code}`);
+    if (quantity > tray.currentQty)
+      fail(code, `La charola ${tray.code} tiene ${tray.currentQty} plántulas, no ${quantity}.`);
+    let cavities: number[] | null = null;
+    if (allowCavities && line.cavities !== undefined && line.cavities !== null) {
+      cavities = parseCavities(tray, line.cavities, code);
+      if (cavities.length !== quantity)
+        fail(
+          code,
+          `En ${tray.code} se marcaron ${cavities.length} cavidades para ${quantity} plántulas.`,
+        );
+      for (const pos of cavities)
+        if (!cavityHasPlant(tray, pos))
+          fail(code, `La cavidad ${pos} de ${tray.code} no tiene plántula.`);
+    }
+    return { tray, quantity, cavities };
+  });
+  const sum = lines.reduce((a, l) => a + l.quantity, 0);
+  if (sum !== total)
+    fail(code, `Las charolas suman ${sum} plántulas y la operación es de ${total}.`);
+  return lines;
+}
+
 /** Lotes activos en la ubicación (o debajo) en esa fecha: a ellos se liga una labor (ADR-0012). */
 export function lotsAtLocation(state: TraceState, locationId: string, date: string): Lot[] {
   const result: Lot[] = [];
   for (const lot of state.lots.values()) {
     if (lot.sowingDate === null || lot.sowingDate > date) continue;
     if (lot.endedAt !== null && lot.endedAt < date) continue;
-    const at = locationAt(lot, date);
-    if (at !== null && isInSubtree(state, at, locationId)) result.push(lot);
+    // Con alguna charola ahí basta: la labor alcanza a todo el lote (ADR-0024, P-42).
+    if (lotLocationsAt(state, lot, date).some((at) => isInSubtree(state, at, locationId)))
+      result.push(lot);
   }
   return result;
 }
@@ -303,6 +423,9 @@ const handlers: Record<string, Handler> = {
       dispatches: [],
       applications: [],
       eventIds: [e.id],
+      trayCodes: [],
+      unassignedLostQty: 0,
+      unassignedDispatchedQty: 0,
     });
   },
 
@@ -336,6 +459,30 @@ const handlers: Record<string, Handler> = {
     lot.sowingDate = date;
     lot.locationId = loc.id;
     lot.locationHistory = [{ locationId: loc.id, from: date, eventId: e.id }];
+    // Charolas llenas en orden; la última puede ir incompleta (BR-CHA-01, BR-CHA-03).
+    let remaining = quantity;
+    lot.trayCodes = [];
+    for (let i = 1; i <= trays; i++) {
+      const code = trayCode(lot.folio, i, trays);
+      const sown = Math.min(cavities, remaining);
+      remaining -= sown;
+      state.trays.set(code, {
+        code,
+        lotId: lot.id,
+        index: i,
+        cavities,
+        sownQty: sown,
+        currentQty: sown,
+        lostQty: 0,
+        dispatchedQty: 0,
+        reseedInQty: 0,
+        reseedOutQty: 0,
+        locationId: loc.id,
+        locationHistory: [{ locationId: loc.id, from: date, eventId: e.id }],
+        marks: {},
+      });
+      lot.trayCodes.push(code);
+    }
     linkEvent(lot, e.id);
   },
 
@@ -374,10 +521,37 @@ const handlers: Record<string, Handler> = {
     const loc = requirePlantable(state, e.payload.toLocationId);
     checkOperatedAt(e, config, lot);
     const date = operationDate(e, config);
-    if (locationAt(lot, date) === loc.id) fail('BR-LOT-11', `El lote ya está en ${loc.code}.`);
-    lot.locationHistory.push({ locationId: loc.id, from: date, eventId: e.id });
-    lot.locationHistory.sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0));
-    lot.locationId = lot.locationHistory[lot.locationHistory.length - 1].locationId;
+    const all = lotTrays(state, lot);
+    const raw = e.payload.trays;
+    let moving: Tray[];
+    if (raw === undefined || raw === null) {
+      // Sin charolas indicadas se mueve el lote completo (significado original del evento).
+      const withPlants = all.filter((t) => t.currentQty > 0);
+      moving = withPlants.length ? withPlants : all;
+      const at = moving.length
+        ? [...new Set(moving.map((t) => trayLocationAt(t, date)))]
+        : [locationAt(lot, date)];
+      if (at.length === 1 && at[0] === loc.id) fail('BR-LOT-11', `El lote ya está en ${loc.code}.`);
+      lot.locationHistory.push({ locationId: loc.id, from: date, eventId: e.id });
+      lot.locationHistory.sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0));
+      lot.locationId = lot.locationHistory[lot.locationHistory.length - 1].locationId;
+    } else {
+      if (!Array.isArray(raw) || raw.length === 0)
+        fail('BR-LOT-11', 'Indica al menos una charola para mover.');
+      const seen = new Set<string>();
+      moving = raw.map((c: unknown) => {
+        const tray = getTray(state, lot, c);
+        if (seen.has(tray.code)) fail('BR-LOT-11', `La charola ${tray.code} se repite.`);
+        seen.add(tray.code);
+        if (tray.currentQty === 0)
+          fail('BR-LOT-11', `La charola ${tray.code} ya no tiene plántulas.`);
+        if (trayLocationAt(tray, date) === loc.id)
+          fail('BR-LOT-11', `La charola ${tray.code} ya está en ${loc.code}.`);
+        return tray;
+      });
+    }
+    for (const t of moving) setTrayLocation(t, loc.id, date, e.id);
+    refreshLotLocation(state, lot);
     linkEvent(lot, e.id);
   },
 
@@ -397,6 +571,16 @@ const handlers: Record<string, Handler> = {
       );
     }
     checkOperatedAt(e, config, lot);
+    const trayLines = parseTrayLines(state, lot, e.payload.trays, quantity, 'BR-LOT-05', true);
+    const lossDate = operationDate(e, config);
+    if (trayLines === null) lot.unassignedLostQty += quantity;
+    for (const l of trayLines ?? []) {
+      l.tray.currentQty -= l.quantity;
+      l.tray.lostQty += l.quantity;
+      for (const pos of l.cavities ?? [])
+        l.tray.marks[pos] = { mark: 'PERDIDA', eventId: e.id, date: lossDate, note: cause };
+    }
+    if (trayLines) refreshLotLocation(state, lot);
     lot.currentQty -= quantity;
     lot.lostQty += quantity;
     lot.losses.push({
@@ -444,6 +628,11 @@ const handlers: Record<string, Handler> = {
       lot.lostQty += remaining;
       lot.currentQty = 0;
       lot.losses.push({ eventId: e.id, quantity: remaining, cause, date });
+      // El sobrante son las plántulas que quedaban en sus charolas.
+      for (const t of lotTrays(state, lot)) {
+        t.lostQty += t.currentQty;
+        t.currentQty = 0;
+      }
     }
     lot.stage = CORE_STAGES.closed;
     lot.endedAt = date;
@@ -538,9 +727,16 @@ const handlers: Record<string, Handler> = {
       }
       if (lot.sowingDate && date < lot.sowingDate)
         fail('BR-EVT-06', 'La entrega es anterior a la siembra.');
-      return { lot, quantity };
+      const trays = parseTrayLines(state, lot, line.trays, quantity, 'BR-ENT-02', false);
+      return { lot, quantity, trays };
     });
-    for (const { lot, quantity } of parsed) {
+    for (const { lot, quantity, trays } of parsed) {
+      if (trays === null) lot.unassignedDispatchedQty += quantity;
+      for (const t of trays ?? []) {
+        t.tray.currentQty -= t.quantity;
+        t.tray.dispatchedQty += t.quantity;
+      }
+      if (trays) refreshLotLocation(state, lot);
       lot.currentQty -= quantity;
       lot.dispatchedQty += quantity;
       lot.dispatches.push({
@@ -560,7 +756,11 @@ const handlers: Record<string, Handler> = {
       customer,
       order,
       date,
-      lines: parsed.map(({ lot, quantity }) => ({ lotId: lot.id, quantity })),
+      lines: parsed.map(({ lot, quantity, trays }) => ({
+        lotId: lot.id,
+        quantity,
+        trays: (trays ?? []).map((t) => t.tray.code),
+      })),
     });
   },
 
@@ -570,21 +770,80 @@ const handlers: Record<string, Handler> = {
       fail('UC-IDE-03', `El formato de etiqueta ${format} no existe.`);
     const copies = positiveInt(e.payload, 'copies', 'UC-IDE-03', 'El número de copias');
     if (copies > MAX_COPIES) fail('UC-IDE-03', `Se imprimen hasta ${MAX_COPIES} copias a la vez.`);
-    if (e.entityType === 'lot') getLot(state, e.entityId);
-    else if (e.entityType === 'location') getLocation(state, e.entityId);
-    else fail('UC-IDE-03', 'La etiqueta es de un lote o de una ubicación.');
-    const list = state.labelPrints.get(e.entityId) ?? [];
-    list.push({
-      eventId: e.id,
-      format,
-      copies,
-      userId: e.userId,
-      occurredAt: e.occurredAt,
-      reprint: list.length > 0,
-    });
-    state.labelPrints.set(e.entityId, list);
+    let keys = [e.entityId];
+    if (e.entityType === 'lot') {
+      const lot = getLot(state, e.entityId);
+      const raw = e.payload.trays;
+      if (raw !== undefined && raw !== null) {
+        // Etiquetas de charolas del lote (ADR-0024).
+        if (!Array.isArray(raw) || raw.length === 0)
+          fail('UC-IDE-03', 'Indica al menos una charola.');
+        keys = [...new Set(raw.map((c: unknown) => getTray(state, lot, c).code))];
+      }
+    } else if (e.entityType === 'location') getLocation(state, e.entityId);
+    else fail('UC-IDE-03', 'La etiqueta es de un lote, una charola o una ubicación.');
+    for (const key of keys) {
+      const list = state.labelPrints.get(key) ?? [];
+      list.push({
+        eventId: e.id,
+        format,
+        copies,
+        userId: e.userId,
+        occurredAt: e.occurredAt,
+        reprint: list.length > 0,
+      });
+      state.labelPrints.set(key, list);
+    }
     // La etiqueta es historia del lote, no un cambio de su estado.
     if (e.entityType === 'lot') linkEvent(state.lots.get(e.entityId)!, e.id);
+  },
+
+  /** Mapa de cavidades: observar, quitar la observación o resembrar dentro del lote (ADR-0024). */
+  CavitiesMarked(state, e, config) {
+    const lot = getLot(state, e.entityId);
+    requireActive(lot);
+    requireSown(lot);
+    const tray = getTray(state, lot, e.payload.tray);
+    const mark = str(e.payload, 'mark', 'BR-CHA-04', 'la marca');
+    const cavities = parseCavities(tray, e.payload.cavities, 'BR-CHA-04');
+    checkOperatedAt(e, config, lot);
+    const date = operationDate(e, config);
+    const note = optStr(e.payload, 'note');
+    if (mark === 'OBSERVADA') {
+      for (const pos of cavities)
+        if (!cavityHasPlant(tray, pos))
+          fail('UC-CAL-01', `La cavidad ${pos} de ${tray.code} no tiene plántula.`);
+      for (const pos of cavities)
+        tray.marks[pos] = { mark: 'OBSERVADA', eventId: e.id, date, note };
+    } else if (mark === 'SANA') {
+      for (const pos of cavities)
+        if (tray.marks[pos]?.mark !== 'OBSERVADA')
+          fail('UC-CAL-01', `La cavidad ${pos} de ${tray.code} no está observada.`);
+      for (const pos of cavities) delete tray.marks[pos];
+    } else if (mark === 'RESEMBRADA') {
+      const from = getTray(state, lot, e.payload.fromTray);
+      if (from.code === tray.code)
+        fail('BR-CHA-04', 'La plántula para resembrar sale de otra charola del lote.');
+      for (const pos of cavities)
+        if (cavityHasPlant(tray, pos))
+          fail('BR-CHA-04', `La cavidad ${pos} de ${tray.code} ya tiene plántula.`);
+      if (from.currentQty < cavities.length)
+        fail('BR-CHA-04', `La charola ${from.code} solo tiene ${from.currentQty} plántulas.`);
+      from.currentQty -= cavities.length;
+      from.reseedOutQty += cavities.length;
+      tray.currentQty += cavities.length;
+      tray.reseedInQty += cavities.length;
+      for (const pos of cavities)
+        tray.marks[pos] = {
+          mark: 'RESEMBRADA',
+          eventId: e.id,
+          date,
+          note: `con plántula de ${from.code}`,
+        };
+    } else {
+      fail('BR-CHA-04', `Marca de cavidad no válida: ${mark}.`);
+    }
+    linkEvent(lot, e.id);
   },
 
   EventVoided(state, e) {

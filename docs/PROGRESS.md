@@ -100,6 +100,7 @@ No bloquean el Sprint 0.
 |---|---|---|
 | P-40 | Autenticación local (PIN o contraseña) y clave de sincronización | T-109 |
 | P-41 | Datos personales: aviso y conservación | T-127 |
+| P-42 | Una aplicación en una mesa: bloquear la entrega de todo el lote con alguna charola ahí (lo que hace el demo, ADR-0024) o solo de las charolas tratadas | T-123 |
 
 ### Decisiones cerradas
 

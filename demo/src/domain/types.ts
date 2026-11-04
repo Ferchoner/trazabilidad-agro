@@ -37,6 +37,7 @@ export type EventType =
   | 'QuarantineReleased'
   | 'DispatchRecorded'
   | 'LabelPrinted'
+  | 'CavitiesMarked'
   | 'EventVoided';
 
 export type EntityType =
@@ -143,6 +144,29 @@ export interface LotApplication {
   until: string | null;
 }
 
+/** Estado de una cavidad que se marcó (ADR-0024). Las demás cuentan como sanas o sin sembrar. */
+export type CavityMark = 'PERDIDA' | 'OBSERVADA' | 'RESEMBRADA';
+export const CAVITY_MARKS: CavityMark[] = ['PERDIDA', 'OBSERVADA', 'RESEMBRADA'];
+
+/** Una charola del lote (BR-CHA-01, BR-CHA-03). La plántula no tiene identificador propio. */
+export interface Tray {
+  code: string;
+  lotId: string;
+  index: number;
+  cavities: number;
+  sownQty: number;
+  currentQty: number;
+  lostQty: number;
+  dispatchedQty: number;
+  /** Plántulas que entraron o salieron por resiembra dentro del mismo lote. */
+  reseedInQty: number;
+  reseedOutQty: number;
+  locationId: string;
+  locationHistory: { locationId: string; from: string; eventId: string }[];
+  /** Cavidades marcadas, por posición (1..cavities). */
+  marks: Record<number, { mark: CavityMark; eventId: string; date: string; note: string | null }>;
+}
+
 export interface Lot {
   id: string;
   folio: string;
@@ -169,6 +193,11 @@ export interface Lot {
   applications: LotApplication[];
   /** Eventos directos del lote y de sus ubicaciones (ADR-0012), en orden de aplicación. */
   eventIds: string[];
+  /** Códigos de sus charolas, en orden (ADR-0024). */
+  trayCodes: string[];
+  /** Pérdidas y entregas capturadas sin charola: cuentan en el lote, no en sus charolas. */
+  unassignedLostQty: number;
+  unassignedDispatchedQty: number;
 }
 
 export interface DispatchRecord {
@@ -177,7 +206,7 @@ export interface DispatchRecord {
   customer: string;
   order: string;
   date: string;
-  lines: { lotId: string; quantity: number }[];
+  lines: { lotId: string; quantity: number; trays: string[] }[];
 }
 
 /** Una impresión de etiqueta (ADR-0023); no cambia el estado del lote. */
@@ -198,7 +227,9 @@ export interface TraceState {
   lots: Map<string, Lot>;
   folios: Map<string, string>;
   dispatches: Map<string, DispatchRecord>;
-  /** Impresiones de etiqueta por lote o ubicación (ADR-0023). */
+  /** Charolas por código (ADR-0024). */
+  trays: Map<string, Tray>;
+  /** Impresiones de etiqueta por lote, charola o ubicación (ADR-0023). */
   labelPrints: Map<string, LabelPrint[]>;
   /** Último consecutivo de folio usado (ADR-0010: los nuevos siguen al último del Excel). */
   lastFolioNumber: number;
@@ -217,6 +248,7 @@ export function emptyState(config: ProducerConfig): TraceState {
     lots: new Map(),
     folios: new Map(),
     dispatches: new Map(),
+    trays: new Map(),
     labelPrints: new Map(),
     lastFolioNumber: config.producer.lastExcelFolio,
     events: new Map(),
