@@ -300,6 +300,8 @@ describe('operaciones por charola (ADR-0024)', () => {
       lotId: ids.lot('L-0818'),
       folio: 'L-0818',
       index: 5,
+      currentQty: 128,
+      path: 'Inv 2 › Sector B › Tabla M2',
     });
   });
 

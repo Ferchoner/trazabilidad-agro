@@ -966,3 +966,171 @@ input[type='checkbox'] {
     -webkit-print-color-adjust: exact;
   }
 }
+
+/* ---------- charolas y mapa de cavidades (ADR-0024) ---------- */
+
+.field-hint {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.text-red {
+  color: var(--red);
+}
+ul.plain {
+  margin: 0.25rem 0 0;
+  padding-left: 1.1rem;
+}
+.chip-sub {
+  opacity: 0.75;
+  font-size: 0.72rem;
+}
+.tray-toolbar {
+  align-items: center;
+  flex-wrap: wrap;
+}
+.tray-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.tray-tile {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  display: grid;
+}
+.tray-tile.empty {
+  opacity: 0.6;
+}
+.tray-check {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.5rem 0;
+  font-size: 0.9rem;
+}
+.tray-open {
+  all: unset;
+  cursor: pointer;
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.15rem 0.5rem 0.45rem;
+  border-radius: 0 0 8px 8px;
+}
+.tray-open:hover,
+.tray-open:focus-visible {
+  background: var(--green-soft);
+}
+.tray-open:focus-visible {
+  outline: 2px solid var(--green);
+}
+.tray-qty {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.tray-marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  min-height: 1.2rem;
+}
+.tray-marks .badge {
+  font-size: 0.7rem;
+  padding: 0 0.3rem;
+}
+.tray-map {
+  margin-top: 1rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+.tray-map h3 {
+  margin: 0;
+}
+.cav-grid {
+  display: grid;
+  gap: 3px;
+  max-width: 640px;
+  margin: 0.5rem 0;
+}
+.cav {
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--green-soft);
+  color: var(--muted);
+  font-size: 0.62rem;
+  padding: 0;
+  min-width: 0;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+button.cav:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+.cav.s-sana {
+  background: var(--green-soft);
+  border-color: var(--green);
+}
+.cav.s-vacia {
+  background: transparent;
+  border-style: dashed;
+}
+.cav.s-perdida {
+  background: var(--red-soft);
+  border-color: var(--red);
+  color: var(--red);
+}
+.cav.s-observada {
+  background: var(--amber-soft);
+  border-color: var(--amber);
+  color: var(--amber);
+}
+.cav.s-resembrada {
+  background: var(--blue-soft);
+  border-color: var(--blue);
+  color: var(--blue);
+}
+.cav.sel {
+  box-shadow: 0 0 0 2px var(--text);
+  font-weight: 700;
+  color: var(--text);
+}
+.cav-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.9rem;
+  margin-bottom: 0.5rem;
+}
+.cav-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.cav-legend i.cav {
+  width: 0.9rem;
+  cursor: default;
+}
+.line-trays {
+  grid-column: 1 / -1;
+}
+.tray-checks .check-row {
+  grid-template-columns: auto 7rem 1fr auto;
+}
+
+@media (max-width: 640px) {
+  .cav-grid {
+    gap: 2px;
+  }
+  .cav span {
+    display: none;
+  }
+  .tray-grid {
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  }
+  .tray-checks .check-row {
+    grid-template-columns: auto 7rem 1fr;
+  }
+}

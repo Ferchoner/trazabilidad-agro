@@ -31,6 +31,8 @@ let sessionUser = null;
 let scanHandler = null;
 /** Navegación vigente: una consulta de una pantalla anterior no pinta sobre la actual. */
 let routeSeq = 0;
+/** Charolas marcadas en la ficha del lote, para mover o imprimir. */
+let traySelection = new Set();
 
 class StaleView extends Error {}
 
@@ -241,6 +243,59 @@ function isAdmin() {
   return currentUser().permissions.includes('*');
 }
 
+// ---------- charolas (ADR-0024) ----------
+
+/** Cavidades por charola que usa cada variedad en el caso; se pueden cambiar al capturar. */
+const DEFAULT_CAVITIES = { Festival: 72, 'Camino Real': 72, 'San Andreas': 128 };
+
+/** "L-0818-C05" → "C05". */
+const shortTray = (code) => String(code).replace(/^.*-(C\d+)$/, '$1');
+
+function joinList(items) {
+  if (items.length <= 1) return items.join('');
+  return `${items.slice(0, -1).join(', ')} y ${items[items.length - 1]}`;
+}
+
+/** Columnas del mapa: 72 cavidades en 6 × 12 y 128 en 8 × 16. */
+function gridCols(n) {
+  if (n === 72) return 12;
+  if (n === 128) return 16;
+  for (const c of [12, 10, 16, 8, 14, 9, 6, 20]) if (n % c === 0 && n / c <= c) return c;
+  return Math.min(16, Math.ceil(Math.sqrt(n * 2)));
+}
+
+const CELL_LABEL = {
+  SANA: 'Con plántula',
+  VACIA: 'Vacía',
+  PERDIDA: 'Perdida',
+  OBSERVADA: 'Observada',
+  RESEMBRADA: 'Resembrada',
+};
+
+/**
+ * Cantidad prellenada con el máximo (charolas × cavidades), que queda marcado junto al campo;
+ * casi siempre se usan todas las cavidades (Fernando, 2026-11-04). Se puede bajar, no pasar.
+ */
+function bindMaxQuantity(form, hint) {
+  const update = (reset) => {
+    const cap = Number(form.trays.value) * Number(form.cavities.value);
+    if (!(cap > 0)) {
+      hint.textContent = '';
+      form.quantity.removeAttribute('max');
+      return;
+    }
+    form.quantity.max = String(cap);
+    if (reset) form.quantity.value = String(cap);
+    const over = Number(form.quantity.value) > cap;
+    hint.innerHTML = `Máximo: <strong>${fmtN(cap)}</strong> plántulas (${fmtN(Number(form.trays.value))} charolas × ${fmtN(Number(form.cavities.value))} cavidades)${over ? '. <strong class="text-red">No puede pasar el máximo.</strong>' : ''}`;
+  };
+  form.trays.addEventListener('input', () => update(true));
+  form.cavities.addEventListener('input', () => update(true));
+  form.quantity.addEventListener('input', () => update(false));
+  update(true);
+  return update;
+}
+
 // ---------- etiquetas (ADR-0023) ----------
 
 /** Espacio para el código de barras y su alto, en mm, por formato. */
@@ -287,7 +342,9 @@ function lotLabelItem(lot) {
 
 function labelHtml(item, fmt) {
   const compact = fmt.code === 'R58';
-  const top = `<div class="lbl-top"><span>${esc(config.producer.name)}</span><span>${esc(item.kind === 'lot' ? 'Lote' : item.levelLabel)}</span></div>`;
+  const kindLabel =
+    item.kind === 'lot' ? 'Lote' : item.kind === 'tray' ? 'Charola' : item.levelLabel;
+  const top = `<div class="lbl-top"><span>${esc(config.producer.name)}</span><span>${esc(kindLabel)}</span></div>`;
   const bars = `<div class="lbl-bars">${barcodeSvg(item.code, fmt)}</div>`;
   if (item.kind === 'lot') {
     return `<div class="label lbl-${esc(fmt.code)}">${top}
@@ -295,6 +352,13 @@ function labelHtml(item, fmt) {
       <div class="lbl-line"><strong>${esc(item.variety)}</strong> · ${item.sowingDate ? `Siembra ${esc(fmtDate(item.sowingDate))}` : 'Planificado'}</div>
       <div class="lbl-line">${esc(item.location || '—')}</div>
       ${compact ? '' : `<div class="lbl-line">${fmtN(item.quantity)} plántulas${item.trays ? ` · ${item.trays} charolas` : ''}</div>`}
+      ${bars}</div>`;
+  }
+  if (item.kind === 'tray') {
+    return `<div class="label lbl-${esc(fmt.code)}">${top}
+      <div class="lbl-code">${esc(item.code)}</div>
+      <div class="lbl-line">Lote <strong>${esc(item.folio)}</strong> · ${esc(item.variety)}</div>
+      ${compact ? '' : `<div class="lbl-line">Charola ${item.index} de ${item.total} · ${item.cavities} cavidades</div>`}
       ${bars}</div>`;
   }
   return `<div class="label lbl-${esc(fmt.code)}">${top}
@@ -308,18 +372,31 @@ async function printLabels(items, formatCode, copies) {
   const fmt = labelFormat(formatCode);
   const n = Math.max(1, Math.min(50, Number(copies) || 1));
   if (!items.length) throw new Error('Elige al menos una etiqueta.');
+  // Un evento por lote o ubicación; las charolas de un lote van juntas en un solo evento.
+  const trayGroups = new Map();
+  for (const it of items.filter((x) => x.kind === 'tray')) {
+    trayGroups.set(it.lotId, [...(trayGroups.get(it.lotId) ?? []), it.code]);
+  }
+  const event = (entityType, entityId, payload) => ({
+    id: uuid(),
+    type: 'LabelPrinted',
+    entityType,
+    entityId,
+    occurredAt: new Date().toISOString(),
+    deviceId: deviceId(),
+    payload,
+  });
   await api('/events', {
     method: 'POST',
     body: JSON.stringify({
-      events: items.map((it) => ({
-        id: uuid(),
-        type: 'LabelPrinted',
-        entityType: it.kind,
-        entityId: it.id,
-        occurredAt: new Date().toISOString(),
-        deviceId: deviceId(),
-        payload: { format: fmt.code, copies: n },
-      })),
+      events: [
+        ...items
+          .filter((it) => it.kind !== 'tray')
+          .map((it) => event(it.kind, it.id, { format: fmt.code, copies: n })),
+        ...[...trayGroups].map(([lotId, trays]) =>
+          event('lot', lotId, { format: fmt.code, copies: n, trays }),
+        ),
+      ],
     }),
   });
   store.set('formato-etiqueta', fmt.code);
@@ -358,10 +435,15 @@ async function onScan(raw) {
     toast(`Código no reconocido: ${result.code}`, true);
   } else if (result.kind === 'lot') {
     location.hash = `#/lote/${result.folio}`;
+  } else if (result.kind === 'tray') {
+    location.hash = `#/lote/${result.folio}?charola=${encodeURIComponent(result.code)}`;
   } else {
     const lots = await api('/lots', { global: true });
     const here = lots.filter(
-      (l) => l.location?.id === result.id && !['CERRADO', 'PERDIDO', 'CANCELADO'].includes(l.stage),
+      (l) =>
+        (l.locations.length
+          ? l.locations.some((x) => x.id === result.id)
+          : l.location?.id === result.id) && !['CERRADO', 'PERDIDO', 'CANCELADO'].includes(l.stage),
     );
     toast(`${result.path}: ${here.length ? here.map((l) => l.folio).join(', ') : 'sin lotes'}`);
   }
@@ -504,7 +586,7 @@ const views = {
               (l) => `<tr class="clickable" data-href="#/lote/${esc(l.folio)}">
               <td class="nowrap"><a href="#/lote/${esc(l.folio)}"><strong>${esc(l.folio)}</strong></a></td>
               <td>${esc(l.variety)}</td>
-              <td class="hide-sm">${esc(l.location?.path ?? '—')}</td>
+              <td class="hide-sm">${l.locations.length > 1 ? esc(l.locations.map((x) => x.code).join(', ')) : esc(l.location?.path ?? '—')}</td>
               <td>${stageBadge(l)}</td><td>${holdBadge(l)}</td><td>${commercialBadge(l)}</td>
               <td class="num">${l.stage === 'PLANIFICADO' ? `<span class="muted">${fmtN(l.plannedQty)} plan.</span>` : fmtN(l.currentQty)}</td>
               <td class="hide-sm">${l.safety ? `<span class="badge amber" title="${esc(l.safety.message)}">Intervalo</span>` : ''}${l.material ? '' : ' <span class="badge amber">Origen PENDIENTE</span>'}</td>
@@ -545,7 +627,7 @@ const views = {
       </div>
       ${lot.safety ? `<div class="alert amber">${esc(lot.safety.message)}</div>` : ''}
       ${lot.deliverable ? '<div class="alert green">Se puede entregar hoy: listo, libre y fuera de intervalo de seguridad.</div>' : ''}
-      ${params.get('nuevo') ? '<div class="alert green">Lote registrado. Imprime su etiqueta y pégala en la tabla.</div>' : ''}
+      ${params.get('nuevo') ? '<div class="alert green">Lote registrado. Imprime su etiqueta y pégala en la tabla; las de sus charolas se imprimen abajo, en Charolas.</div>' : ''}
       <div class="panel">
         <div class="row-head"><h2>Etiqueta</h2><span class="small muted" id="label-prints"></span></div>
         <div class="label-panel">
@@ -570,7 +652,11 @@ const views = {
             <dt>Sembradas</dt><dd>${fmtN(lot.initialQty)}</dd>
             <dt>Perdidas</dt><dd>${fmtN(lot.lostQty)}</dd>
             <dt>Entregadas</dt><dd>${fmtN(lot.dispatchedQty)}</dd>
-            <dt>Ubicación</dt><dd>${esc(lot.location?.path ?? '—')}</dd>
+            <dt>Ubicación</dt><dd>${
+              lot.locations.length > 1
+                ? `Repartido en ${lot.locations.length} ${esc(config.levels.TABLE.toLowerCase())}s:<ul class="small plain">${lot.locations.map((x) => `<li>${esc(x.path)}: ${x.trays} charolas, ${fmtN(x.quantity)} plántulas</li>`).join('')}</ul>`
+                : esc(lot.location?.path ?? '—')
+            }</dd>
           </dl>
           ${lot.locationHistory.length > 1 ? `<h3 class="small muted">Ubicaciones en el tiempo</h3><ul class="small">${lot.locationHistory.map((h) => `<li>Desde ${esc(fmtDate(h.from))}: ${esc(h.path)}</li>`).join('')}</ul>` : ''}
         </div>
@@ -581,7 +667,8 @@ const views = {
           ${lot.losses.length ? `<h3 class="small muted">Pérdidas</h3><ul class="small">${lot.losses.map((l) => `<li>${esc(fmtDate(l.date))}: ${fmtN(l.quantity)}, ${esc(l.cause)}</li>`).join('')}</ul>` : ''}
         </div>
       </div>
-      ${terminal ? '' : `<div class="panel"><h2>Registrar</h2><p class="muted small">Aparecen las operaciones que permite tu usuario. Para mover el lote, escanea la etiqueta de la tabla destino.</p><div class="action-list" id="actions"></div></div>`}
+      ${lot.trayList.length ? '<div class="panel" id="trays-panel"></div>' : ''}
+      ${terminal ? '' : `<div class="panel"><h2>Registrar</h2><p class="muted small">Aparecen las operaciones que permite tu usuario. Para mover el lote, escanea la etiqueta de la ${esc(config.levels.TABLE.toLowerCase())} destino; para mover solo algunas charolas, márcalas o escanéalas antes.</p><div class="action-list" id="actions"></div></div>`}
       <div class="panel">
         <h2>Historia del lote</h2>
         <p class="muted small">Eventos del lote y de su ubicación (en azul), en el orden en que se aplican. La fecha de la operación puede ser anterior a la de captura.</p>
@@ -597,7 +684,9 @@ const views = {
           )
           .join('')}</ol>
       </div>`;
+    traySelection = new Set();
     if (!terminal) renderLotActions(lot);
+    if (lot.trayList.length) setupTrays(lot, params);
     const printed = lot.history.filter((h) => h.type === 'LabelPrinted' && h.status === 'APPLIED');
     document.getElementById('label-prints').textContent = printed.length
       ? `Impresa ${printed.length === 1 ? 'una vez' : `${printed.length} veces`}; última ${fmtInstant(printed[printed.length - 1].occurredAt)}`
@@ -617,6 +706,19 @@ const views = {
       route();
     });
     scanHandler = (r) => {
+      if (r.kind === 'tray' && r.lotId === lot.id) {
+        const box = $app.querySelector(`input[data-tray="${CSS.escape(r.code)}"]`);
+        if (!box || box.disabled) {
+          toast(`La charola ${r.code} ya no tiene plántulas.`, true);
+          return true;
+        }
+        box.checked = true;
+        box.dispatchEvent(new Event('change', { bubbles: true }));
+        toast(
+          `${shortTray(r.code)} marcada (${traySelection.size === 1 ? '1 charola' : `${traySelection.size} charolas`} para mover o imprimir).`,
+        );
+        return true;
+      }
       if (r.kind !== 'location') return false;
       const move = $app.querySelector('details[data-action="move"]');
       if (!move) return false;
@@ -624,7 +726,7 @@ const views = {
         toast(`Escanea la etiqueta de una ${config.levels.TABLE.toLowerCase()}.`, true);
         return true;
       }
-      if (r.id === lot.location?.id) {
+      if (!traySelection.size && lot.locations.length <= 1 && r.id === lot.location?.id) {
         toast(`El lote ya está en ${r.path}.`, true);
         return true;
       }
@@ -665,15 +767,14 @@ const views = {
     const busy = new Set(
       lots
         .filter((l) => !['CERRADO', 'PERDIDO', 'CANCELADO'].includes(l.stage))
-        .map((l) => l.location?.id),
+        .flatMap((l) => [l.location?.id, ...l.locations.map((x) => x.id)]),
     );
     const freeTable = catalog.locations
       .filter((l) => l.level === 'TABLE' && !busy.has(l.id))
       .sort((a, b) => a.code.localeCompare(b.code))[0];
-    const cav = { Festival: 72, 'Camino Real': 72, 'San Andreas': 128 };
     $app.innerHTML = `
       <h1>Registrar lote</h1>
-      <p class="muted">El folio se asigna al registrar y continúa la numeración de su control actual. Escanea la etiqueta de la tabla para ubicarlo; al guardar, imprime la etiqueta del lote.</p>
+      <p class="muted">El folio se asigna al registrar y continúa la numeración de su control actual. Escanea la etiqueta de la tabla para ubicarlo; al guardar, imprime la etiqueta del lote y las de sus charolas. La cantidad viene con el máximo de charolas por cavidades; bájala si quedaron cavidades sin sembrar.</p>
       <form class="panel stack" id="new-lot">
         <div class="form-grid">
           <label class="field">Folio<input name="folio" value="${esc(s.nextFolio)}" required pattern="[A-Za-z]{1,4}-[0-9]{3,6}(-[A-Za-z])?"></label>
@@ -689,16 +790,17 @@ const views = {
         <div class="form-grid" id="sow-fields">
           <label class="field">Charolas<input type="number" name="trays" min="1" value="12" required></label>
           <label class="field">Cavidades por charola<input type="number" name="cavities" min="1" value="72" required></label>
-          <label class="field">Plántulas sembradas<input type="number" name="quantity" min="1" value="864" required></label>
+          <label class="field">Plántulas sembradas<input type="number" name="quantity" min="1" required></label>
           ${dateField('operatedAt', 'Fecha de siembra')}
+          <p class="small field-hint" id="capacity"></p>
         </div>
         <div class="form-grid" id="plan-fields" hidden>
           <label class="field">Plántulas planeadas<input type="number" name="plannedQty" min="1" value="1000"></label>
         </div>
-        <div class="small muted" id="capacity"></div>
         <div class="actions"><button class="primary" type="submit">Registrar lote</button></div>
       </form>`;
     const form = document.getElementById('new-lot');
+    const updateCapacity = bindMaxQuantity(form, document.getElementById('capacity'));
     const fillMaterials = () => {
       const opts = catalog.materials.filter((m) => m.varietyId === form.varietyId.value);
       form.plantMaterialId.innerHTML =
@@ -709,29 +811,16 @@ const views = {
           )
           .join('') + '<option value="">Sin dato (queda PENDIENTE)</option>';
       const v = catalog.varieties.find((x) => x.id === form.varietyId.value);
-      form.cavities.value = cav[v?.name] ?? 72;
+      form.cavities.value = DEFAULT_CAVITIES[v?.name] ?? 72;
       updateCapacity(true);
     };
-    const updateCapacity = (resetQty = false) => {
-      const cap = Number(form.trays.value) * Number(form.cavities.value);
-      if (resetQty) form.quantity.value = cap;
-      const over = Number(form.quantity.value) > cap;
-      document.getElementById('capacity').innerHTML =
-        form.mode.value === 'sow'
-          ? `${fmtN(cap)} cavidades en total.${over ? ' <strong>Hay más plántulas que cavidades: no se podrá registrar.</strong>' : ''}`
-          : '';
-    };
     form.varietyId.addEventListener('change', fillMaterials);
-    form.trays.addEventListener('input', () => updateCapacity(true));
-    form.cavities.addEventListener('input', () => updateCapacity(true));
-    form.quantity.addEventListener('input', () => updateCapacity(false));
     form.querySelectorAll('input[name="mode"]').forEach((r) =>
       r.addEventListener('change', () => {
         const sow = form.mode.value === 'sow';
         document.getElementById('sow-fields').hidden = !sow;
         document.getElementById('plan-fields').hidden = sow;
         form.querySelectorAll('#sow-fields input').forEach((i) => (i.required = sow));
-        updateCapacity();
       }),
     );
     fillMaterials();
@@ -777,12 +866,12 @@ const views = {
       <h1>Inventario de plántula</h1>
       <p class="muted">Plántulas vivas por variedad y etapa. "Para entregar hoy" separa lo que está listo, libre y fuera de intervalo de seguridad.</p>
       <div class="table-wrap"><table>
-        <thead><tr><th>Variedad</th>${stages.map((s) => `<th class="num">${esc(s.label)}</th>`).join('')}<th class="num">Total</th><th class="num">Para entregar hoy</th><th class="num">En cuarentena</th><th class="num">Bloqueado por intervalo</th><th class="num">Planificado</th></tr></thead>
-        <tbody>${rows.map((r) => `<tr><td><strong>${esc(r.variety)}</strong></td>${stages.map((s) => `<td class="num">${fmtN(r.byStage[s.code])}</td>`).join('')}<td class="num"><strong>${fmtN(r.total)}</strong></td><td class="num">${fmtN(r.deliverable)}</td><td class="num">${fmtN(r.quarantine)}</td><td class="num">${fmtN(r.safetyBlocked)}</td><td class="num muted">${fmtN(r.planned)}</td></tr>`).join('')}</tbody>
-        <tfoot><tr><td>Total</td>${stages.map((s) => `<td class="num">${fmtN(sum(null, s.code))}</td>`).join('')}<td class="num">${fmtN(sum('total'))}</td><td class="num">${fmtN(sum('deliverable'))}</td><td class="num">${fmtN(sum('quarantine'))}</td><td class="num">${fmtN(sum('safetyBlocked'))}</td><td class="num">${fmtN(sum('planned'))}</td></tr></tfoot>
+        <thead><tr><th>Variedad</th>${stages.map((s) => `<th class="num">${esc(s.label)}</th>`).join('')}<th class="num">Total</th><th class="num">Charolas</th><th class="num">Para entregar hoy</th><th class="num">En cuarentena</th><th class="num">Bloqueado por intervalo</th><th class="num">Planificado</th></tr></thead>
+        <tbody>${rows.map((r) => `<tr><td><strong>${esc(r.variety)}</strong></td>${stages.map((s) => `<td class="num">${fmtN(r.byStage[s.code])}</td>`).join('')}<td class="num"><strong>${fmtN(r.total)}</strong></td><td class="num">${fmtN(r.trays)}</td><td class="num">${fmtN(r.deliverable)}</td><td class="num">${fmtN(r.quarantine)}</td><td class="num">${fmtN(r.safetyBlocked)}</td><td class="num muted">${fmtN(r.planned)}</td></tr>`).join('')}</tbody>
+        <tfoot><tr><td>Total</td>${stages.map((s) => `<td class="num">${fmtN(sum(null, s.code))}</td>`).join('')}<td class="num">${fmtN(sum('total'))}</td><td class="num">${fmtN(sum('trays'))}</td><td class="num">${fmtN(sum('deliverable'))}</td><td class="num">${fmtN(sum('quarantine'))}</td><td class="num">${fmtN(sum('safetyBlocked'))}</td><td class="num">${fmtN(sum('planned'))}</td></tr></tfoot>
       </table></div>
       <h2>Por ubicación</h2>
-      <p class="muted small">${esc(center.name)} → ${esc(config.levels.GREENHOUSE)} → ${esc(config.levels.SECTOR)} → ${esc(config.levels.TABLE)}. La ubicación de cada lote sale de sus movimientos.</p>
+      <p class="muted small">${esc(center.name)} → ${esc(config.levels.GREENHOUSE)} → ${esc(config.levels.SECTOR)} → ${esc(config.levels.TABLE)} → lote → charolas. La ubicación sale de los movimientos de cada charola: un lote repartido aparece en cada ${esc(config.levels.TABLE.toLowerCase())} con las suyas. Toca un lote para ver sus charolas ahí.</p>
       <div class="tree">${center.children
         .map(
           (gh) => `<section class="greenhouse">
@@ -791,11 +880,11 @@ const views = {
             .map(
               (sec) => `<div class="sector">
               <div class="row-head"><strong>${esc(sec.name)}</strong><span>${fmtN(sec.quantity)}</span></div>
-              ${sec.lots.length ? `<div class="small">Sin tabla: ${sec.lots.map(chip).join('')}</div>` : ''}
+              ${sec.lots.length ? `<div class="small">Sin ${esc(config.levels.TABLE.toLowerCase())}: ${sec.lots.map((l) => chip(l, sec)).join('')}</div>` : ''}
               <div class="tables">${sec.children
                 .map(
                   (t) =>
-                    `<div class="table-row"><span>${esc(t.name)}</span><span>${t.lots.length ? t.lots.map(chip).join('') : '<span class="muted small">libre</span>'}</span><span class="num">${t.quantity ? fmtN(t.quantity) : ''}</span></div>`,
+                    `<div class="table-row"><span>${esc(t.name)}</span><span>${t.lots.length ? t.lots.map((l) => chip(l, t)).join('') : '<span class="muted small">libre</span>'}</span><span class="num">${t.quantity ? fmtN(t.quantity) : ''}</span></div>`,
                 )
                 .join('')}</div>
             </div>`,
@@ -804,8 +893,10 @@ const views = {
         </section>`,
         )
         .join('')}</div>`;
-    function chip(l) {
-      return `<a class="chip ${l.hold === 'EN_CUARENTENA' ? 'red' : ''}" href="#/lote/${esc(l.folio)}" title="${esc(l.stage)}">${esc(l.folio)}</a>`;
+    function chip(l, where) {
+      const trays = l.trayItems.map((t) => `${shortTray(t.code)} ${fmtN(t.quantity)}`).join(', ');
+      const title = `${l.stage}${trays ? `. Charolas: ${trays}` : ''}`;
+      return `<a class="chip ${l.hold === 'EN_CUARENTENA' ? 'red' : ''}" href="#/lote/${esc(l.folio)}${l.trays ? `?mesa=${encodeURIComponent(where.code)}` : ''}" title="${esc(title)}">${esc(l.folio)}${l.trays ? ` <span class="chip-sub">${l.trays} ch.</span>` : ''}</a>`;
     }
   },
 
@@ -815,7 +906,7 @@ const views = {
     const allowed = can('DispatchRecorded');
     $app.innerHTML = `
       <h1>Entregas</h1>
-      <p class="muted">Una entrega registra cliente, pedido y una línea por lote. Escanea la etiqueta de cada lote para agregarlo. Si una línea no cumple, no se guarda nada.</p>
+      <p class="muted">Una entrega registra cliente, pedido y una línea por lote. Escanea la etiqueta de cada charola que sale: se suma a la línea de su lote con sus plántulas. También se puede escanear el lote y capturar la cantidad. Si una línea no cumple, no se guarda nada.</p>
       ${
         allowed
           ? `<form class="panel stack" id="dispatch">
@@ -833,22 +924,88 @@ const views = {
       }
       <h2>Entregas registradas</h2>
       <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Cliente</th><th>Pedido</th><th>Lotes</th><th class="num">Plántulas</th></tr></thead>
-      <tbody>${dispatches.map((d) => `<tr><td>${esc(fmtDate(d.date))}</td><td>${esc(d.customer)}</td><td>${esc(d.order)}</td><td>${d.lines.map((l) => `<a class="chip" href="#/lote/${esc(l.folio)}">${esc(l.folio)}</a> ${fmtN(l.quantity)}`).join(' ')}</td><td class="num">${fmtN(d.total)}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">Sin entregas.</td></tr>'}</tbody></table></div>`;
+      <tbody>${dispatches.map((d) => `<tr><td>${esc(fmtDate(d.date))}</td><td>${esc(d.customer)}</td><td>${esc(d.order)}</td><td>${d.lines.map((l) => `<a class="chip" href="#/lote/${esc(l.folio)}">${esc(l.folio)}</a> ${fmtN(l.quantity)}${l.trays?.length ? ` <span class="small muted">(${l.trays.length} charolas)</span>` : ''}`).join(' ')}</td><td class="num">${fmtN(d.total)}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">Sin entregas.</td></tr>'}</tbody></table></div>`;
     if (!allowed) return;
     const lines = document.getElementById('lines');
     const addLine = () => {
       const div = document.createElement('div');
       div.className = 'form-grid';
       div.innerHTML = `<label class="field">Lote<select name="lot" required>${ready.map((l) => `<option value="${l.id}">${esc(l.folio)} · ${esc(l.variety)} · quedan ${fmtN(l.currentQty)}${l.hold === 'EN_CUARENTENA' ? ' · en cuarentena' : ''}${l.safety ? ' · en intervalo' : ''}</option>`).join('')}</select></label>
-        <label class="field">Plántulas<input type="number" name="qty" min="1" required></label>`;
+        <label class="field">Plántulas<input type="number" name="qty" min="1" required></label>
+        <div class="line-trays small" hidden></div>`;
+      div.trays = [];
       lines.appendChild(div);
+    };
+    const renderTrays = (line) => {
+      const box = line.querySelector('.line-trays');
+      const qty = line.querySelector('input[name="qty"]');
+      box.hidden = !line.trays.length;
+      qty.readOnly = line.trays.length > 0;
+      if (!line.trays.length) return;
+      qty.value = String(line.trays.reduce((a, t) => a + t.quantity, 0));
+      box.innerHTML = `${line.trays.length === 1 ? '1 charola' : `${line.trays.length} charolas`}: ${line.trays.map((t) => `<span class="chip">${esc(shortTray(t.code))} ${fmtN(t.quantity)}</span>`).join('')} <button type="button" class="link-button" data-clear-trays>Quitar charolas</button>`;
+    };
+    lines.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-clear-trays]');
+      if (!btn) return;
+      const line = btn.closest('.form-grid');
+      line.trays = [];
+      line.querySelector('input[name="qty"]').value = '';
+      renderTrays(line);
+    });
+    /** Línea del lote ya escaneada o elegida, o una vacía (o nueva) para él. */
+    const lineFor = (lotId) => {
+      const all = [...lines.querySelectorAll('select[name="lot"]')];
+      const existing = all.find(
+        (sel) => sel.value === lotId && (sel.dataset.scanned || sel.dataset.touched),
+      );
+      if (existing) return { sel: existing, isNew: false };
+      let target = all.find((sel) => !sel.dataset.touched && !sel.dataset.scanned);
+      if (!target) {
+        addLine();
+        target = [...lines.querySelectorAll('select[name="lot"]')].pop();
+      }
+      target.value = lotId;
+      target.dataset.scanned = '1';
+      return { sel: target, isNew: true };
     };
     addLine();
     document.getElementById('add-line').addEventListener('click', addLine);
     lines.addEventListener('change', (e) => {
-      if (e.target.name === 'lot') e.target.dataset.touched = '1';
+      if (e.target.name !== 'lot') return;
+      e.target.dataset.touched = '1';
+      const line = e.target.closest('.form-grid');
+      if (line.trays.length) {
+        line.trays = [];
+        line.querySelector('input[name="qty"]').value = '';
+        renderTrays(line);
+      }
     });
     scanHandler = (r) => {
+      if (r.kind === 'tray') {
+        const lot = ready.find((l) => l.id === r.lotId);
+        if (!lot) {
+          toast(`${r.folio} no está listo para entregar.`, true);
+          return true;
+        }
+        if (r.currentQty === 0) {
+          toast(`La charola ${r.code} ya no tiene plántulas.`, true);
+          return true;
+        }
+        const { sel } = lineFor(r.lotId);
+        const line = sel.closest('.form-grid');
+        if (line.trays.some((t) => t.code === r.code)) {
+          toast(`${r.code} ya está en la entrega.`);
+          return true;
+        }
+        line.trays.push({ code: r.code, quantity: r.currentQty });
+        renderTrays(line);
+        const total = line.trays.reduce((a, t) => a + t.quantity, 0);
+        toast(
+          `${r.code}: ${fmtN(r.currentQty)} plántulas. ${r.folio} lleva ${fmtN(total)} en ${line.trays.length === 1 ? '1 charola' : `${line.trays.length} charolas`}.`,
+        );
+        return true;
+      }
       if (r.kind !== 'lot') return false;
       const lot = ready.find((l) => l.id === r.id);
       if (!lot) {
@@ -876,17 +1033,18 @@ const views = {
       return true;
     };
     onSubmit(document.getElementById('dispatch'), async (d, form) => {
-      const lots = [...form.querySelectorAll('select[name="lot"]')].map((s) => s.value);
-      const qtys = [...form.querySelectorAll('input[name="qty"]')].map((i) => Number(i.value));
+      const rows = [...form.querySelectorAll('#lines > .form-grid')].map((line) => ({
+        lotId: line.querySelector('select[name="lot"]').value,
+        quantity: Number(line.querySelector('input[name="qty"]').value),
+        ...(line.trays.length
+          ? { trays: line.trays.map((t) => ({ code: t.code, quantity: t.quantity })) }
+          : {}),
+      }));
       await capture(
         'DispatchRecorded',
         'dispatch',
         uuid(),
-        {
-          customer: d.customer,
-          order: d.order,
-          lines: lots.map((lotId, i) => ({ lotId, quantity: qtys[i] })),
-        },
+        { customer: d.customer, order: d.order, lines: rows },
         d.operatedAt,
       );
       toast('Entrega registrada.');
@@ -942,7 +1100,7 @@ const views = {
     const tables = data.locations.filter((l) => l.level === 'TABLE');
     $app.innerHTML = `
       <h1>Etiquetas</h1>
-      <p class="muted">Etiquetas de lote y de ${esc(config.levels.TABLE.toLowerCase())} con código de barras. Marca las que necesitas o escanéalas para agregarlas.</p>
+      <p class="muted">Etiquetas de lote, de charola y de ${esc(config.levels.TABLE.toLowerCase())} con código de barras. Marca las que necesitas o escanéalas para agregarlas. La etiqueta de charola se pega una vez y la charola la conserva.</p>
       ${allowed ? '' : '<div class="alert amber">Tu usuario no imprime etiquetas.</div>'}
       <form class="panel stack" id="labels-form">
         <div class="form-grid">
@@ -971,11 +1129,63 @@ const views = {
             .join('')}</div>
         </div>
       </div>
+      <div class="panel">
+        <div class="row-head"><h2>Charolas</h2><label class="small"><input type="checkbox" id="trays-all"> Todas las del lote</label></div>
+        <div class="toolbar"><select id="tray-lot" aria-label="Lote de las charolas">${[...new Set(data.trays.map((t) => t.folio))].map((f) => `<option value="${esc(f)}">${esc(f)}</option>`).join('')}</select><span class="small muted" id="trays-sel"></span></div>
+        <div class="check-list tray-checks" id="tray-list"></div>
+      </div>
       <h2>Vista previa</h2>
       <div class="label-preview" id="preview"><p class="muted small">Marca una etiqueta para verla.</p></div>`;
     const form = document.getElementById('labels-form');
-    const items = () =>
-      [...$app.querySelectorAll('input[data-kind]:checked')].map((box) => {
+    const trayChecked = new Set();
+    const trayLot = document.getElementById('tray-lot');
+    const renderTrayList = () => {
+      const list = data.trays.filter((t) => t.folio === trayLot.value);
+      document.getElementById('tray-list').innerHTML = list
+        .map(
+          (t) =>
+            `<label class="check-row"><input type="checkbox" data-tray-code="${esc(t.code)}" ${trayChecked.has(t.code) ? 'checked' : ''}><strong>${esc(t.code)}</strong><span>${fmtN(t.currentQty)} plántulas · ${esc(t.location)}</span><span class="small muted">${printed(t.prints)}</span></label>`,
+        )
+        .join('');
+      document.getElementById('trays-all').checked =
+        list.length > 0 && list.every((t) => trayChecked.has(t.code));
+      document.getElementById('trays-sel').textContent = trayChecked.size
+        ? `${trayChecked.size} charolas marcadas`
+        : '';
+    };
+    trayLot.addEventListener('change', renderTrayList);
+    renderTrayList();
+    document.getElementById('trays-all').addEventListener('change', (e) => {
+      for (const t of data.trays.filter((x) => x.folio === trayLot.value)) {
+        if (e.target.checked) trayChecked.add(t.code);
+        else trayChecked.delete(t.code);
+      }
+      renderTrayList();
+      refresh();
+    });
+    document.getElementById('tray-list').addEventListener('change', (e) => {
+      const box = e.target.closest('input[data-tray-code]');
+      if (!box) return;
+      if (box.checked) trayChecked.add(box.dataset.trayCode);
+      else trayChecked.delete(box.dataset.trayCode);
+      renderTrayList();
+      refresh();
+    });
+    const trayItems = () =>
+      data.trays
+        .filter((t) => trayChecked.has(t.code))
+        .map((t) => ({
+          kind: 'tray',
+          lotId: t.lotId,
+          code: t.code,
+          folio: t.folio,
+          index: t.index,
+          total: t.total,
+          variety: t.variety,
+          cavities: t.cavities,
+        }));
+    const items = () => [
+      ...[...$app.querySelectorAll('input[data-kind]:checked')].map((box) => {
         if (box.dataset.kind === 'lot') {
           const l = data.lots.find((x) => x.id === box.value);
           return {
@@ -991,7 +1201,9 @@ const views = {
         }
         const t = data.locations.find((x) => x.id === box.value);
         return { kind: 'location', id: t.id, code: t.code, path: t.path, levelLabel: t.levelLabel };
-      });
+      }),
+      ...trayItems(),
+    ];
     const refresh = () => {
       const list = items();
       document.getElementById('sel-count').textContent = String(list.length);
@@ -1017,6 +1229,18 @@ const views = {
     });
     scanHandler = (r) => {
       if (r.kind === 'unknown') return false;
+      if (r.kind === 'tray') {
+        if (!data.trays.some((t) => t.code === r.code)) {
+          toast(`${r.code} es de un lote terminado.`, true);
+          return true;
+        }
+        trayChecked.add(r.code);
+        trayLot.value = r.folio;
+        renderTrayList();
+        refresh();
+        toast(`${r.code} agregada a la impresión.`);
+        return true;
+      }
       const box = $app.querySelector(`input[data-kind="${r.kind}"][value="${r.id}"]`);
       if (!box) {
         toast(`${r.code} no tiene etiqueta en esta lista.`, true);
@@ -1062,9 +1286,11 @@ const views = {
       const what =
         r.kind === 'lot'
           ? `lote ${r.folio}`
-          : r.kind === 'location'
-            ? r.path
-            : 'código no reconocido';
+          : r.kind === 'tray'
+            ? `charola ${r.index} del lote ${r.folio}`
+            : r.kind === 'location'
+              ? r.path
+              : 'código no reconocido';
       document.getElementById('scan-test').innerHTML =
         `<strong>${esc(r.code)}</strong> <span class="badge ${r.kind === 'unknown' ? 'red' : 'green'}">${esc(what)}</span>`;
       return true;
@@ -1125,12 +1351,14 @@ function renderLotActions(lot) {
     ]);
   }
   if (!sown && can('LotSown')) {
+    const cavities = DEFAULT_CAVITIES[lot.variety] ?? 72;
     items.push([
       'Sembrar',
-      `<label class="field">Charolas<input type="number" name="trays" min="1" required></label>
-       <label class="field">Cavidades por charola<input type="number" name="cavities" min="1" value="72" required></label>
-       <label class="field">Plántulas sembradas<input type="number" name="quantity" min="1" value="${lot.plannedQty}" required></label>
-       <label class="field">Tabla<select name="locationId">${locationOptions(['TABLE', 'SECTOR'], lot.location?.id)}</select></label>${dateField('operatedAt', 'Fecha de siembra')}`,
+      `<label class="field">Charolas<input type="number" name="trays" min="1" value="${Math.ceil(lot.plannedQty / cavities)}" required></label>
+       <label class="field">Cavidades por charola<input type="number" name="cavities" min="1" value="${cavities}" required></label>
+       <label class="field">Plántulas sembradas<input type="number" name="quantity" min="1" required></label>
+       <p class="small field-hint" data-max-hint></p>
+       <label class="field">${esc(config.levels.TABLE)}<select name="locationId">${locationOptions(['TABLE', 'SECTOR'], lot.location?.id)}</select></label>${dateField('operatedAt', 'Fecha de siembra')}`,
       (d) =>
         capture(
           'LotSown',
@@ -1144,30 +1372,61 @@ function renderLotActions(lot) {
           },
           d.operatedAt,
         ),
+      'sow',
+      (form) => bindMaxQuantity(form, form.querySelector('[data-max-hint]')),
     ]);
   }
   if (sown && can('LossRecorded')) {
+    const withPlants = lot.trayList.filter((t) => t.currentQty > 0);
     items.push([
       'Registrar pérdida',
-      `<label class="field">Plántulas<input type="number" name="quantity" min="1" max="${lot.currentQty}" required></label>
-       <label class="field">Causa<select name="cause">${config.lossCauses.map((c) => `<option>${esc(c)}</option>`).join('')}</select></label>${dateField()}`,
+      `${withPlants.length ? `<label class="field">Charola<select name="tray"><option value="">Sin indicar charola</option>${withPlants.map((t) => `<option value="${esc(t.code)}">${esc(shortTray(t.code))} · ${fmtN(t.currentQty)} plántulas · ${esc(t.location.code)}</option>`).join('')}</select></label>` : ''}
+       <label class="field">Plántulas<input type="number" name="quantity" min="1" max="${lot.currentQty}" required></label>
+       <label class="field">Causa<select name="cause">${config.lossCauses.map((c) => `<option>${esc(c)}</option>`).join('')}</select></label>${dateField()}
+       ${withPlants.length ? '<p class="small muted field-hint">Para marcar las cavidades, abre la charola en Charolas.</p>' : ''}`,
       (d) =>
         capture(
           'LossRecorded',
           'lot',
           lot.id,
-          { quantity: Number(d.quantity), cause: d.cause },
+          {
+            quantity: Number(d.quantity),
+            cause: d.cause,
+            ...(d.tray ? { trays: [{ code: d.tray, quantity: Number(d.quantity) }] } : {}),
+          },
           d.operatedAt,
         ),
+      'loss',
+      (form) => {
+        if (!form.tray) return;
+        const sync = () => {
+          const t = lot.trayList.find((x) => x.code === form.tray.value);
+          form.quantity.max = String(t ? t.currentQty : lot.currentQty);
+        };
+        form.tray.addEventListener('change', sync);
+        if (traySelection.size === 1) form.tray.value = [...traySelection][0];
+        sync();
+      },
     ]);
   }
   if (sown && can('LotTransferred')) {
     items.push([
       `Mover a otra ${config.levels.TABLE.toLowerCase()}`,
-      `<label class="field">Destino<select name="toLocationId">${locationOptions(['TABLE']).replace(`value="${lot.location?.id}"`, `value="${lot.location?.id}" disabled`)}</select></label>${dateField()}`,
+      `<p class="small field-hint" data-move-what></p>
+       <label class="field">Destino<select name="toLocationId">${locationOptions(['TABLE'])}</select></label>${dateField()}`,
       (d) =>
-        capture('LotTransferred', 'lot', lot.id, { toLocationId: d.toLocationId }, d.operatedAt),
+        capture(
+          'LotTransferred',
+          'lot',
+          lot.id,
+          {
+            toLocationId: d.toLocationId,
+            ...(traySelection.size ? { trays: [...traySelection] } : {}),
+          },
+          d.operatedAt,
+        ),
       'move',
+      () => updateMoveWhat(lot),
     ]);
   }
   if (sown && can('ApplicationRecorded')) {
@@ -1246,17 +1505,288 @@ function renderLotActions(lot) {
     box.innerHTML = '<p class="muted small">Tu usuario no tiene operaciones para este lote.</p>';
     return;
   }
-  items.forEach(([title, fields, handler, key]) => {
+  items.forEach(([title, fields, handler, key, setup]) => {
     const details = document.createElement('details');
     details.className = 'action';
     if (key) details.dataset.action = key;
     details.innerHTML = `<summary>${esc(title)}</summary><form class="stack"><div class="form-grid">${fields}</div><div class="actions"><button class="primary" type="submit">Guardar</button></div></form>`;
     box.appendChild(details);
+    if (setup) setup(details.querySelector('form'));
     onSubmit(details.querySelector('form'), async (d) => {
       await handler(d);
       toast(`${title}: registrado.`);
       route();
     });
+  });
+}
+
+/** Lo que se mueve: el lote completo o las charolas marcadas. */
+function updateMoveWhat(lot) {
+  const el = $app.querySelector('[data-move-what]');
+  if (!el) return;
+  const active = lot.trayList.filter((t) => t.currentQty > 0).length;
+  el.innerHTML = traySelection.size
+    ? `Se ${traySelection.size === 1 ? 'mueve 1 charola' : `mueven ${traySelection.size} charolas`}: <strong>${esc(joinList([...traySelection].sort().map(shortTray)))}</strong>.`
+    : `Se mueve el lote completo${active ? ` (${active} charolas)` : ''}. Para mover solo algunas, márcalas en Charolas o escanea sus etiquetas.`;
+}
+
+/** Pestaña Charolas de la ficha: lista por tabla, selección y mapa de cavidades (ADR-0024). */
+function setupTrays(lot, params) {
+  const panel = document.getElementById('trays-panel');
+  const filterCode = params.get('mesa') ?? '';
+  const tables = [...new Map(lot.trayList.map((t) => [t.location.id, t.location])).values()].sort(
+    (a, b) => a.code.localeCompare(b.code),
+  );
+  const active = lot.trayList.filter((t) => t.currentQty > 0);
+  const unassigned = [
+    lot.unassignedLostQty ? `${fmtN(lot.unassignedLostQty)} perdidas` : '',
+    lot.unassignedDispatchedQty ? `${fmtN(lot.unassignedDispatchedQty)} entregadas` : '',
+  ].filter(Boolean);
+  const marks = (t) => {
+    const count = (st) => t.cells.filter((c) => c.state === st).length;
+    const out = [];
+    if (t.currentQty === 0 && t.dispatchedQty > 0)
+      out.push('<span class="badge green">Entregada</span>');
+    else if (t.currentQty === 0) out.push('<span class="badge">Vacía</span>');
+    if (t.lostQty) out.push(`<span class="badge red" title="Perdidas">−${fmtN(t.lostQty)}</span>`);
+    if (count('OBSERVADA'))
+      out.push(
+        `<span class="badge amber" title="Cavidades observadas">${count('OBSERVADA')} obs.</span>`,
+      );
+    if (count('RESEMBRADA'))
+      out.push(
+        `<span class="badge blue" title="Cavidades resembradas">${count('RESEMBRADA')} res.</span>`,
+      );
+    return out.join('');
+  };
+  panel.innerHTML = `
+    <div class="row-head"><h2>Charolas</h2><span class="small muted">${lot.trayList.length} charolas de ${lot.cavities} cavidades · ${active.length} con plántula${tables.length > 1 ? ` · en ${tables.length} ${esc(config.levels.TABLE.toLowerCase())}s` : ''}</span></div>
+    ${unassigned.length ? `<p class="small muted">${esc(joinList(unassigned))} sin charola asignada (se capturaron solo por lote).</p>` : ''}
+    <div class="toolbar tray-toolbar">
+      ${tables.length > 1 ? `<select id="tray-filter" aria-label="${esc(config.levels.TABLE)}"><option value="">Todas las ${esc(config.levels.TABLE.toLowerCase())}s</option>${tables.map((t) => `<option value="${esc(t.code)}" ${t.code === filterCode ? 'selected' : ''}>${esc(t.code)}</option>`).join('')}</select>` : ''}
+      <label class="small"><input type="checkbox" id="tray-all"> Marcar las visibles</label>
+      <span class="small" id="tray-count">Ninguna marcada</span>
+      <button type="button" class="secondary" id="tray-print" disabled ${can('LabelPrinted') ? '' : 'hidden'}>Imprimir etiquetas</button>
+    </div>
+    <div class="tray-grid">${lot.trayList
+      .map(
+        (
+          t,
+        ) => `<div class="tray-tile${t.currentQty === 0 ? ' empty' : ''}" data-loc="${esc(t.location.code)}">
+          <label class="tray-check"><input type="checkbox" data-tray="${esc(t.code)}" ${t.currentQty === 0 ? 'disabled' : ''} aria-label="Marcar ${esc(t.code)}"><strong>${esc(shortTray(t.code))}</strong></label>
+          <button type="button" class="tray-open" data-open="${esc(t.code)}" title="Ver el mapa de ${esc(t.code)}">
+            <span class="tray-qty">${fmtN(t.currentQty)}<span class="muted">/${t.cavities}</span></span>
+            <span class="small muted">${esc(t.location.code)}</span>
+            <span class="tray-marks">${marks(t)}</span>
+          </button>
+        </div>`,
+      )
+      .join('')}</div>
+    <div id="tray-map"></div>`;
+  const filter = document.getElementById('tray-filter');
+  const tiles = [...panel.querySelectorAll('.tray-tile')];
+  const applyFilter = () => {
+    const code = filter?.value ?? '';
+    tiles.forEach((tile) => (tile.hidden = Boolean(code) && tile.dataset.loc !== code));
+  };
+  const refresh = () => {
+    const n = traySelection.size;
+    document.getElementById('tray-count').textContent = n
+      ? `${n === 1 ? '1 marcada' : `${n} marcadas`}: ${joinList([...traySelection].sort().map(shortTray))}`
+      : 'Ninguna marcada';
+    const print = document.getElementById('tray-print');
+    print.disabled = n === 0;
+    print.textContent = n
+      ? `Imprimir ${n === 1 ? '1 etiqueta' : `${n} etiquetas`}`
+      : 'Imprimir etiquetas';
+    updateMoveWhat(lot);
+  };
+  filter?.addEventListener('change', applyFilter);
+  applyFilter();
+  panel.addEventListener('change', (e) => {
+    const box = e.target.closest('input[data-tray]');
+    if (!box) return;
+    if (box.checked) traySelection.add(box.dataset.tray);
+    else traySelection.delete(box.dataset.tray);
+    if (box.checked && box.closest('.tray-tile').hidden && filter) {
+      filter.value = '';
+      applyFilter();
+    }
+    refresh();
+  });
+  document.getElementById('tray-all').addEventListener('change', (e) => {
+    tiles
+      .filter((tile) => !tile.hidden)
+      .forEach((tile) => {
+        const box = tile.querySelector('input[data-tray]');
+        if (box.disabled) return;
+        box.checked = e.target.checked;
+        if (box.checked) traySelection.add(box.dataset.tray);
+        else traySelection.delete(box.dataset.tray);
+      });
+    refresh();
+  });
+  document.getElementById('tray-print').addEventListener('click', async () => {
+    const form = document.getElementById('lot-print');
+    const items = lot.trayList
+      .filter((t) => traySelection.has(t.code))
+      .map((t) => ({
+        kind: 'tray',
+        lotId: lot.id,
+        code: t.code,
+        folio: lot.folio,
+        index: t.index,
+        total: lot.trayList.length,
+        variety: lot.variety,
+        cavities: t.cavities,
+      }));
+    try {
+      await printLabels(items, form.format.value, form.copies.value);
+      toast(
+        `${items.length === 1 ? 'Etiqueta de charola enviada' : `${items.length} etiquetas de charola enviadas`} a imprimir.`,
+      );
+    } catch (err) {
+      toast(errorText(err), true);
+    }
+  });
+  panel.querySelectorAll('[data-open]').forEach((b) =>
+    b.addEventListener('click', () => {
+      renderTrayMap(lot, b.dataset.open);
+      document.getElementById('tray-map').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }),
+  );
+  refresh();
+  const open = params.get('charola');
+  if (open && lot.trayList.some((t) => t.code === open)) {
+    renderTrayMap(lot, open);
+    document.getElementById('tray-map').scrollIntoView({ block: 'start' });
+  }
+}
+
+/** Mapa de cavidades de una charola: solo se marcan las excepciones. */
+function renderTrayMap(lot, code) {
+  const box = document.getElementById('tray-map');
+  const t = lot.trayList.find((x) => x.code === code);
+  const terminal = ['CERRADO', 'PERDIDO', 'CANCELADO'].includes(lot.stage);
+  const canLoss = !terminal && can('LossRecorded');
+  const canMark = !terminal && can('CavitiesMarked');
+  const sources = lot.trayList.filter((x) => x.code !== code && x.currentQty > 0);
+  const actions = [
+    canLoss && ['loss', 'Pérdida'],
+    canMark && ['observe', 'Observación'],
+    canMark && ['clear', 'Quitar observación'],
+    canMark && sources.length && ['reseed', 'Resiembra'],
+  ].filter(Boolean);
+  const cellTitle = (c) =>
+    `Cavidad ${c.pos}: ${CELL_LABEL[c.state]}${c.note ? `, ${c.note}` : ''}${c.date ? ` (${fmtDate(c.date)})` : ''}`;
+  box.innerHTML = `
+    <div class="tray-map">
+      <div class="row-head"><h3>Charola ${esc(t.code)}</h3><button type="button" class="link-button" id="map-close">Cerrar</button></div>
+      <p class="small muted">${esc(t.location.path)} · ${fmtN(t.currentQty)} plántulas en ${t.cavities} cavidades · sembradas ${fmtN(t.sownQty)}${t.lostQty ? ` · perdidas ${fmtN(t.lostQty)}` : ''}${t.dispatchedQty ? ` · entregadas ${fmtN(t.dispatchedQty)}` : ''}${t.reseedInQty ? ` · resembradas ${fmtN(t.reseedInQty)}` : ''}${t.reseedOutQty ? ` · dio ${fmtN(t.reseedOutQty)} para resembrar` : ''}${t.moves ? ` · ${t.moves === 1 ? '1 movimiento' : `${t.moves} movimientos`}` : ''}</p>
+      <div class="cav-grid" id="cav-grid">${t.cells
+        .map(
+          (c) =>
+            `<button type="button" class="cav s-${c.state.toLowerCase()}" data-pos="${c.pos}" title="${esc(cellTitle(c))}" aria-label="${esc(cellTitle(c))}" aria-pressed="false"><span>${c.pos}</span></button>`,
+        )
+        .join('')}</div>
+      <div class="cav-legend small">${['SANA', 'OBSERVADA', 'RESEMBRADA', 'PERDIDA', 'VACIA']
+        .map((st) => `<span><i class="cav s-${st.toLowerCase()}"></i>${CELL_LABEL[st]}</span>`)
+        .join('')}</div>
+      ${t.unplacedQty ? `<p class="small muted">${fmtN(t.unplacedQty)} ${t.unplacedQty === 1 ? 'plántula salió' : 'plántulas salieron'} de esta charola sin marcar cavidad (pérdida o entrega capturada por cantidad); el mapa no las ubica.</p>` : ''}
+      ${
+        actions.length
+          ? `<form class="stack" id="cav-form">
+        <p class="small" id="cav-sel">Toca las cavidades para marcarlas.</p>
+        <div class="form-grid">
+          <label class="field">Qué registras<select name="kind">${actions.map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('')}</select></label>
+          <label class="field" data-for="loss">Causa<select name="cause">${config.lossCauses.map((c) => `<option>${esc(c)}</option>`).join('')}</select></label>
+          <label class="field" data-for="observe">Nota<input name="note" placeholder="Hoja manchada"></label>
+          <label class="field" data-for="reseed">Plántula de la charola<select name="fromTray">${sources.map((x) => `<option value="${esc(x.code)}">${esc(shortTray(x.code))} · ${fmtN(x.currentQty)} plántulas</option>`).join('')}</select></label>
+          ${dateField()}
+        </div>
+        <div class="actions"><button class="primary" type="submit" disabled>Guardar</button></div>
+      </form>`
+          : ''
+      }
+    </div>`;
+  const grid = document.getElementById('cav-grid');
+  grid.style.gridTemplateColumns = `repeat(${gridCols(t.cavities)}, minmax(0, 1fr))`;
+  document.getElementById('map-close').addEventListener('click', () => (box.innerHTML = ''));
+  const form = document.getElementById('cav-form');
+  if (!form) return;
+  const selected = new Set();
+  const stateOf = (pos) => t.cells[pos - 1].state;
+  const ALLOWED = {
+    loss: ['SANA', 'OBSERVADA', 'RESEMBRADA'],
+    observe: ['SANA', 'RESEMBRADA'],
+    clear: ['OBSERVADA'],
+    reseed: ['VACIA', 'PERDIDA'],
+  };
+  const sync = () => {
+    const action = form.kind.value;
+    form.querySelectorAll('[data-for]').forEach((el) => (el.hidden = el.dataset.for !== action));
+    const list = [...selected].sort((a, b) => a - b);
+    const bad = list.filter((pos) => !ALLOWED[action].includes(stateOf(pos)));
+    const from = sources.find((x) => x.code === form.fromTray?.value);
+    let msg = list.length
+      ? `${list.length === 1 ? '1 cavidad marcada' : `${list.length} cavidades marcadas`}: ${list.join(', ')}.`
+      : 'Toca las cavidades para marcarlas.';
+    if (bad.length)
+      msg += ` <strong class="text-red">${action === 'reseed' ? 'Solo se resiembra una cavidad vacía o perdida' : action === 'clear' ? 'Solo se quita la observación a una cavidad observada' : 'Esa cavidad no tiene plántula'} (${bad.join(', ')}).</strong>`;
+    else if (action === 'reseed' && from && from.currentQty < list.length)
+      msg += ` <strong class="text-red">${shortTray(from.code)} solo tiene ${from.currentQty} plántulas.</strong>`;
+    document.getElementById('cav-sel').innerHTML = msg;
+    form.querySelector('button[type="submit"]').disabled =
+      !list.length ||
+      bad.length > 0 ||
+      (action === 'reseed' && from && from.currentQty < list.length);
+  };
+  grid.addEventListener('click', (e) => {
+    const cell = e.target.closest('.cav');
+    if (!cell) return;
+    const pos = Number(cell.dataset.pos);
+    if (selected.has(pos)) selected.delete(pos);
+    else selected.add(pos);
+    cell.classList.toggle('sel', selected.has(pos));
+    cell.setAttribute('aria-pressed', String(selected.has(pos)));
+    sync();
+  });
+  form.addEventListener('change', sync);
+  sync();
+  onSubmit(form, async (d) => {
+    const cavities = [...selected].sort((a, b) => a - b);
+    if (d.kind === 'loss') {
+      await capture(
+        'LossRecorded',
+        'lot',
+        lot.id,
+        {
+          quantity: cavities.length,
+          cause: d.cause,
+          trays: [{ code: t.code, quantity: cavities.length, cavities }],
+        },
+        d.operatedAt,
+      );
+    } else {
+      const mark = { observe: 'OBSERVADA', clear: 'SANA', reseed: 'RESEMBRADA' }[d.kind];
+      await capture(
+        'CavitiesMarked',
+        'lot',
+        lot.id,
+        {
+          tray: t.code,
+          cavities,
+          mark,
+          ...(d.kind === 'observe' && d.note ? { note: d.note } : {}),
+          ...(d.kind === 'reseed' ? { fromTray: d.fromTray } : {}),
+        },
+        d.operatedAt,
+      );
+    }
+    toast(`${t.code}: registrado.`);
+    const target = `#/lote/${lot.folio}?charola=${encodeURIComponent(t.code)}`;
+    if (location.hash === target) route();
+    else location.hash = target;
   });
 }
 

@@ -150,7 +150,11 @@ export function trayView(state: TraceState, tray: Tray) {
     dispatchedQty: tray.dispatchedQty,
     reseedInQty: tray.reseedInQty,
     reseedOutQty: tray.reseedOutQty,
-    location: { id: tray.locationId, path: locationPath(state, tray.locationId) },
+    location: {
+      id: tray.locationId,
+      code: state.locations.get(tray.locationId)?.code ?? '',
+      path: locationPath(state, tray.locationId),
+    },
     moves: tray.locationHistory.length - 1,
     marked: Object.keys(tray.marks).length,
     /** Plántulas que el mapa no ubica: pérdidas o entregas capturadas sin cavidad. */
@@ -321,7 +325,7 @@ export function lotDetail(state: TraceState, lot: Lot, config: ProducerConfig, t
       const p = state.products.get(a.productId);
       return { ...a, product: p?.name ?? '', activeIngredient: p?.activeIngredient ?? '' };
     }),
-    trays: lotTrays(state, lot).map((t) => trayView(state, t)),
+    trayList: lotTrays(state, lot).map((t) => trayView(state, t)),
     history,
   };
 }

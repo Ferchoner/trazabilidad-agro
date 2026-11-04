@@ -11,7 +11,15 @@ export const SCAN_CODE_RE = /^[\x20-\x7e]{1,40}$/;
 
 export type ScanResult =
   | { kind: 'lot'; code: string; id: string; folio: string }
-  | { kind: 'tray'; code: string; lotId: string; folio: string; index: number }
+  | {
+      kind: 'tray';
+      code: string;
+      lotId: string;
+      folio: string;
+      index: number;
+      currentQty: number;
+      path: string;
+    }
   | { kind: 'location'; code: string; id: string; level: string; path: string }
   | { kind: 'unknown'; code: string };
 
@@ -28,6 +36,8 @@ export function resolveCode(state: TraceState, raw: string): ScanResult {
       lotId: tray.lotId,
       folio: state.lots.get(tray.lotId)?.folio ?? '',
       index: tray.index,
+      currentQty: tray.currentQty,
+      path: locationPath(state, tray.locationId),
     };
   const loc = [...state.locations.values()].find((l) => l.code.toUpperCase() === code);
   if (loc)
