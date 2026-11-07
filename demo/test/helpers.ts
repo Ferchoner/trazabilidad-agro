@@ -38,6 +38,8 @@ export function snapshot(state: TraceState): string {
     lots: sortMap(state.lots),
     locations: sortMap(state.locations),
     dispatches: sortMap(state.dispatches),
+    trays: sortMap(state.trays),
+    labelPrints: sortMap(state.labelPrints),
     status: sortMap(state.status),
     lastFolio: state.lastFolioNumber,
   });

@@ -2,15 +2,17 @@
 
 import { localDate } from './dates';
 import { LABEL_FORMATS } from './label-formats';
-import { operationDate, safetyBlock } from './projection';
+import { cavityHasPlant, lotTrays, operationDate, safetyBlock } from './projection';
 import {
   Commercial,
   CORE_STAGES,
   Lot,
   ProducerConfig,
   TERMINAL_STAGES,
+  CavityMark,
   TraceEvent,
   TraceState,
+  Tray,
 } from './types';
 
 export function stageLabel(config: ProducerConfig, code: string): string {
@@ -81,6 +83,7 @@ export function lotView(state: TraceState, lot: Lot, config: ProducerConfig, tod
     location: loc
       ? { id: loc.id, code: loc.code, level: loc.level, path: locationPath(state, loc.id) }
       : null,
+    ...traySummary(state, lot),
     safety: block ? { code: block.code, message: block.message } : null,
     deliverable,
     nextStages: (config.stages.find((s) => s.code === lot.stage)?.next ?? []).filter(
@@ -92,10 +95,93 @@ export function lotView(state: TraceState, lot: Lot, config: ProducerConfig, tod
   };
 }
 
+/** Charolas del lote y mesas donde están (ADR-0024). */
+function traySummary(state: TraceState, lot: Lot) {
+  const trays = lotTrays(state, lot);
+  const active = trays.filter((t) => t.currentQty > 0);
+  const byLoc = new Map<string, { trays: number; quantity: number }>();
+  for (const t of active) {
+    const row = byLoc.get(t.locationId) ?? { trays: 0, quantity: 0 };
+    row.trays++;
+    row.quantity += t.currentQty;
+    byLoc.set(t.locationId, row);
+  }
+  return {
+    trayCount: trays.length,
+    activeTrays: active.length,
+    unassignedLostQty: lot.unassignedLostQty,
+    unassignedDispatchedQty: lot.unassignedDispatchedQty,
+    locations: [...byLoc.entries()]
+      .map(([id, r]) => ({
+        id,
+        code: state.locations.get(id)?.code ?? '',
+        path: locationPath(state, id),
+        ...r,
+      }))
+      .sort((a, b) => a.code.localeCompare(b.code)),
+  };
+}
+
+/** Estado de una cavidad en el mapa: sin marca es SANA (con plántula) o VACIA. */
+export type CellState = CavityMark | 'SANA' | 'VACIA';
+
+/** Vista de una charola con su mapa de cavidades. */
+export function trayView(state: TraceState, tray: Tray) {
+  const lot = state.lots.get(tray.lotId)!;
+  const cells = Array.from({ length: tray.cavities }, (_, i) => {
+    const pos = i + 1;
+    const m = tray.marks[pos];
+    return {
+      pos,
+      state: (m?.mark ?? (cavityHasPlant(tray, pos) ? 'SANA' : 'VACIA')) as CellState,
+      date: m?.date ?? null,
+      note: m?.note ?? null,
+    };
+  });
+  return {
+    code: tray.code,
+    index: tray.index,
+    lotId: lot.id,
+    folio: lot.folio,
+    cavities: tray.cavities,
+    sownQty: tray.sownQty,
+    currentQty: tray.currentQty,
+    lostQty: tray.lostQty,
+    dispatchedQty: tray.dispatchedQty,
+    reseedInQty: tray.reseedInQty,
+    reseedOutQty: tray.reseedOutQty,
+    location: {
+      id: tray.locationId,
+      code: state.locations.get(tray.locationId)?.code ?? '',
+      path: locationPath(state, tray.locationId),
+    },
+    moves: tray.locationHistory.length - 1,
+    marked: Object.keys(tray.marks).length,
+    /** Plántulas que el mapa no ubica: pérdidas o entregas capturadas sin cavidad. */
+    unplacedQty: Math.max(
+      0,
+      cells.filter((c) => c.state !== 'PERDIDA' && c.state !== 'VACIA').length - tray.currentQty,
+    ),
+    cells,
+    prints: state.labelPrints.get(tray.code)?.length ?? 0,
+  };
+}
+
 export function listLots(state: TraceState, config: ProducerConfig, today: string) {
   return [...state.lots.values()]
     .sort((a, b) => (a.folio < b.folio ? -1 : 1))
     .map((l) => lotView(state, l, config, today));
+}
+
+/** "C01, C02 y C03" o "12 charolas" para no llenar la historia. */
+function shortTray(code: unknown): string {
+  return String(code ?? '').replace(/^.*-(C\d+)$/, '$1');
+}
+function trayList(codes: unknown[]): string {
+  const short = codes.map(shortTray);
+  if (short.length > 4) return `${short.length} charolas`;
+  const label = short.length === 1 ? 'charola' : 'charolas';
+  return `${label} ${short.length === 1 ? short[0] : `${short.slice(0, -1).join(', ')} y ${short[short.length - 1]}`}`;
 }
 
 /** Descripción en español de un evento, para historias y bitácora. */
@@ -124,9 +210,24 @@ export function describeEvent(state: TraceState, e: TraceEvent, config: Producer
     case 'LotStageChanged':
       return `${folio} pasa a ${stageLabel(config, p.toStage)}${p.criterion ? ` (${p.criterion})` : ''}`;
     case 'LotTransferred':
-      return `${folio} se mueve a ${loc(p.toLocationId)}`;
+      return Array.isArray(p.trays)
+        ? `${folio}: ${trayList(p.trays)} se ${p.trays.length === 1 ? 'mueve' : 'mueven'} a ${loc(p.toLocationId)}`
+        : `${folio} se mueve a ${loc(p.toLocationId)}`;
     case 'LossRecorded':
-      return `Pérdida en ${folio}: ${p.quantity} plántulas, causa ${p.cause}`;
+      return `Pérdida en ${folio}: ${p.quantity} plántulas, causa ${p.cause}${Array.isArray(p.trays) ? ` (${trayList(p.trays.map((t: { code: string }) => t.code))})` : ''}`;
+    case 'CavitiesMarked': {
+      const n = Array.isArray(p.cavities) ? p.cavities.length : 0;
+      const one = n === 1;
+      const what =
+        p.mark === 'OBSERVADA'
+          ? one
+            ? 'observada'
+            : 'observadas'
+          : p.mark === 'SANA'
+            ? 'sin observación'
+            : `${one ? 'resembrada' : 'resembradas'} con plántula de ${shortTray(p.fromTray)}`;
+      return `${p.tray}: ${one ? '1 cavidad' : `${n} cavidades`} ${what}${p.note ? `, ${p.note}` : ''}`;
+    }
     case 'LotCancelled':
       return `${folio} cancelado: ${p.reason}`;
     case 'LotClosed':
@@ -153,6 +254,8 @@ export function describeEvent(state: TraceState, e: TraceEvent, config: Producer
       const fmt = LABEL_FORMATS.find((f) => f.code === p.format)?.label ?? p.format;
       const prev = (state.labelPrints.get(e.entityId) ?? []).find((x) => x.eventId === e.id);
       const copies = p.copies === 1 ? '1 copia' : `${p.copies} copias`;
+      if (Array.isArray(p.trays))
+        return `Etiquetas de ${p.trays.length === 1 ? 'la charola' : `${p.trays.length} charolas de`} ${p.trays.length === 1 ? p.trays[0] : folio} impresas (${fmt}, ${copies})`;
       return `Etiqueta de ${target} ${prev?.reprint ? 'reimpresa' : 'impresa'} (${fmt}, ${copies})`;
     }
     case 'EventVoided': {
@@ -222,6 +325,7 @@ export function lotDetail(state: TraceState, lot: Lot, config: ProducerConfig, t
       const p = state.products.get(a.productId);
       return { ...a, product: p?.name ?? '', activeIngredient: p?.activeIngredient ?? '' };
     }),
+    trayList: lotTrays(state, lot).map((t) => trayView(state, t)),
     history,
   };
 }
@@ -239,6 +343,7 @@ export function inventoryByVariety(state: TraceState, config: ProducerConfig, to
       let quarantine = 0;
       let safety = 0;
       let planned = 0;
+      let trays = 0;
       for (const lot of state.lots.values()) {
         if (lot.varietyId !== v.id || TERMINAL_STAGES.includes(lot.stage)) continue;
         if (lot.stage === CORE_STAGES.planned) {
@@ -246,6 +351,7 @@ export function inventoryByVariety(state: TraceState, config: ProducerConfig, to
           continue;
         }
         byStage[lot.stage] = (byStage[lot.stage] ?? 0) + lot.currentQty;
+        trays += lotTrays(state, lot).filter((t) => t.currentQty > 0).length;
         if (lot.hold === 'EN_CUARENTENA') quarantine += lot.currentQty;
         if (lot.stage === CORE_STAGES.ready) {
           const view = lotView(state, lot, config, today);
@@ -262,6 +368,7 @@ export function inventoryByVariety(state: TraceState, config: ProducerConfig, to
         quarantine,
         safetyBlocked: safety,
         planned,
+        trays,
       };
     });
   return { stages, rows };
@@ -274,7 +381,15 @@ interface LocationNode {
   level: string;
   levelLabel: string;
   quantity: number;
-  lots: { id: string; folio: string; quantity: number; stage: string; hold: string }[];
+  lots: {
+    id: string;
+    folio: string;
+    quantity: number;
+    trays: number;
+    trayItems: { code: string; quantity: number }[];
+    stage: string;
+    hold: string;
+  }[];
   children: LocationNode[];
 }
 
@@ -286,18 +401,31 @@ export function inventoryByLocation(state: TraceState, config: ProducerConfig): 
       .filter((l) => l.parentId === id)
       .sort((a, b) => a.code.localeCompare(b.code))
       .map((l) => build(l.id));
+    // Por charola: un lote repartido aparece en cada mesa con sus charolas (ADR-0024). Lo que se
+    // capturó sin charola se suma en su mesa principal para que el total cuadre con el lote.
     const lots = [...state.lots.values()]
-      .filter(
-        (l) => l.locationId === id && !TERMINAL_STAGES.includes(l.stage) && l.sowingDate !== null,
-      )
+      .filter((l) => !TERMINAL_STAGES.includes(l.stage) && l.sowingDate !== null)
       .sort((a, b) => a.folio.localeCompare(b.folio))
-      .map((l) => ({
-        id: l.id,
-        folio: l.folio,
-        quantity: l.currentQty,
-        stage: stageLabel(config, l.stage),
-        hold: l.hold,
-      }));
+      .flatMap((l) => {
+        const trays = lotTrays(state, l).filter((t) => t.currentQty > 0 && t.locationId === id);
+        const unassigned =
+          l.locationId === id ? -(l.unassignedLostQty + l.unassignedDispatchedQty) : 0;
+        const fromTrays = trays.reduce((a, t) => a + t.currentQty, 0);
+        const noTrays = lotTrays(state, l).length === 0;
+        if (noTrays && l.locationId !== id) return [];
+        if (!noTrays && trays.length === 0 && unassigned === 0) return [];
+        return [
+          {
+            id: l.id,
+            folio: l.folio,
+            quantity: noTrays ? l.currentQty : fromTrays + unassigned,
+            trays: trays.length,
+            trayItems: trays.map((t) => ({ code: t.code, quantity: t.currentQty })),
+            stage: stageLabel(config, l.stage),
+            hold: l.hold,
+          },
+        ];
+      });
     const quantity =
       lots.reduce((a, l) => a + l.quantity, 0) + children.reduce((a, c) => a + c.quantity, 0);
     return {

@@ -98,6 +98,8 @@ describe('API del demo', () => {
       level: 'TABLE',
       id: ids.loc('INV1-A-M1'),
     });
+    const tray = await request(app.getHttpServer()).get('/api/scan/L-0818-C13').expect(200);
+    expect(tray.body).toMatchObject({ kind: 'tray', folio: 'L-0818', index: 13 });
     const unknown = await request(app.getHttpServer()).get('/api/scan/XYZ-123').expect(200);
     expect(unknown.body).toMatchObject({ kind: 'unknown' });
     await request(app.getHttpServer())
@@ -105,6 +107,18 @@ describe('API del demo', () => {
       .expect(400);
     const after = await request(app.getHttpServer()).get('/api/summary').expect(200);
     expect(after.body.events).toBe(before.body.events);
+  });
+
+  it('da las charolas del lote con su mapa y las de las etiquetas (ADR-0024)', async () => {
+    const lot = await request(app.getHttpServer()).get('/api/lots/L-0818').expect(200);
+    expect(lot.body.trayList).toHaveLength(16);
+    expect(lot.body.trayList[4].cells).toHaveLength(128);
+    expect(lot.body.locations.map((l: { code: string }) => l.code)).toEqual([
+      'INV2-B-M2',
+      'INV2-B-M3',
+    ]);
+    const labels = await request(app.getHttpServer()).get('/api/labels').expect(200);
+    expect(labels.body.trays.some((t: { code: string }) => t.code === 'L-0818-C16')).toBe(true);
   });
 
   it('registra la impresión de etiquetas por rol (ADR-0023)', async () => {

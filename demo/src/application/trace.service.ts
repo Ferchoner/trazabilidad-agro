@@ -27,6 +27,7 @@ export const CAPTURE_TYPES: EventType[] = [
   'QuarantineReleased',
   'DispatchRecorded',
   'LabelPrinted',
+  'CavitiesMarked',
   'EventVoided',
 ];
 

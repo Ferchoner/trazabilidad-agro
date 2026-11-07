@@ -2,6 +2,7 @@
 // de una ubicación, su código (INV1-A-M1); la pistola lectora los teclea tal cual.
 
 import { LABEL_FORMATS } from './label-formats';
+import { lotTrays } from './projection';
 import { locationPath, stageLabel } from './queries';
 import { ProducerConfig, TERMINAL_STAGES, TraceState } from './types';
 
@@ -10,14 +11,34 @@ export const SCAN_CODE_RE = /^[\x20-\x7e]{1,40}$/;
 
 export type ScanResult =
   | { kind: 'lot'; code: string; id: string; folio: string }
+  | {
+      kind: 'tray';
+      code: string;
+      lotId: string;
+      folio: string;
+      index: number;
+      currentQty: number;
+      path: string;
+    }
   | { kind: 'location'; code: string; id: string; level: string; path: string }
   | { kind: 'unknown'; code: string };
 
-/** Qué es un código leído: lote, ubicación o desconocido. Sin efecto sobre el estado. */
+/** Qué es un código leído: lote, charola, ubicación o desconocido. Sin efecto sobre el estado. */
 export function resolveCode(state: TraceState, raw: string): ScanResult {
   const code = raw.trim().toUpperCase();
   const lotId = state.folios.get(code);
   if (lotId) return { kind: 'lot', code, id: lotId, folio: code };
+  const tray = state.trays.get(code);
+  if (tray)
+    return {
+      kind: 'tray',
+      code,
+      lotId: tray.lotId,
+      folio: state.lots.get(tray.lotId)?.folio ?? '',
+      index: tray.index,
+      currentQty: tray.currentQty,
+      path: locationPath(state, tray.locationId),
+    };
   const loc = [...state.locations.values()].find((l) => l.code.toUpperCase() === code);
   if (loc)
     return {
@@ -66,5 +87,25 @@ export function labelsData(state: TraceState, config: ProducerConfig) {
       path: locationPath(state, l.id) || l.name,
       prints: prints(state, l.id, config),
     }));
-  return { producer: config.producer.name, formats: LABEL_FORMATS, lots, locations };
+  // Charolas de los lotes activos (ADR-0024): su código es FOLIO-Cnn.
+  const trays = [...state.lots.values()]
+    .filter((l) => !TERMINAL_STAGES.includes(l.stage))
+    .sort((a, b) => a.folio.localeCompare(b.folio))
+    .flatMap((l) =>
+      lotTrays(state, l).map((t) => ({
+        code: t.code,
+        lotId: l.id,
+        folio: l.folio,
+        index: t.index,
+        total: l.trayCodes.length,
+        variety: state.varieties.get(l.varietyId)?.name ?? '',
+        sowingDate: l.sowingDate,
+        cavities: t.cavities,
+        sownQty: t.sownQty,
+        currentQty: t.currentQty,
+        location: locationPath(state, t.locationId),
+        prints: prints(state, t.code, config),
+      })),
+    );
+  return { producer: config.producer.name, formats: LABEL_FORMATS, lots, locations, trays };
 }
