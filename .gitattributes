@@ -1,0 +1,19 @@
+# Finales de línea (T-016): LF en el repositorio y en la copia de trabajo, en cualquier sistema.
+# Prettier (endOfLine: lf) lo exige; sin esto, core.autocrlf=true en Windows rompe format:check.
+* text=auto eol=lf
+
+# Los scripts de Windows necesitan CRLF para ejecutarse bien en cmd.exe.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binarios: sin conversión.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.docx binary
+*.xlsx binary
+*.pptx binary
+*.sqlite binary
