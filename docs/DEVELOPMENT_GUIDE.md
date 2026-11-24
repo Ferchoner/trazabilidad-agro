@@ -14,6 +14,7 @@ GitHub Flow: una rama corta por tarea y pull request hacia `main` en `Ferchoner/
 - Identificadores de trazabilidad: ADR-xxxx, P-xx, BR-xxx-nn, UC-xxx-nn, E-nn, T-xxx. Toda regla nueva cita su fuente.
 - Un tipo de evento nuevo se documenta en `DOMAIN_MODEL.md` antes de implementarse; un cambio de contenido sube su `payloadVersion`.
 - Datos de ejemplo siempre ficticios y marcados como tales (ADR-0017).
+- Finales de línea LF en todos los archivos de texto, también en Windows; solo los `.bat` y `.cmd` van con CRLF. Lo fija `.gitattributes` (T-016), sin depender de `core.autocrlf`. Si un clon anterior muestra archivos con CRLF: `git rm --cached -r . && git reset --hard` con la copia de trabajo limpia.
 
 ## Configuración local
 
