@@ -22,6 +22,7 @@ En Windows: doble clic en `INICIAR_DEMO.bat`.
 - Para abrirlo desde un teléfono o tablet de la misma red: `HOST=0.0.0.0 npm start` y abrir `http://<IP de la laptop>:3000`. No hay PIN (P-40): solo en una red de confianza.
 - La base queda en `demo/data/demo.sqlite` (fuera de Git). Otra ruta: `DEMO_DB=...`. Otro puerto: `PORT=...`.
 - Al abrir se elige el usuario (inicio de sesión sin contraseña, P-40).
+- Tema claro u oscuro: el interruptor del encabezado (y del inicio de sesión) lo cambia y se recuerda en ese navegador; sin elegir, sigue al sistema. Es una preferencia de vista, no un evento (T-015).
 - "Restablecer datos" (pantalla Administración, solo Administrador) recarga el caso Productor A. Una base creada con una versión anterior conserva sus datos hasta restablecerla.
 
 ## Etiquetas y lector de códigos (ADR-0014, ADR-0023)
