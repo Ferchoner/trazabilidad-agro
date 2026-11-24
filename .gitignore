@@ -12,6 +12,9 @@ coverage/
 *.sqlite
 *.sqlite3
 *.db
+*.sqlite-shm
+*.sqlite-wal
+demo/data/
 respaldos/
 
 # Sistema y editores

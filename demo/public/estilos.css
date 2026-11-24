@@ -5,11 +5,15 @@
   --text: #1f2a1f;
   --muted: #5d6a5d;
   --border: #dcdccf;
+  /* Borde de controles (campos, casillas, interruptor): ≥ 3:1 sobre la superficie. */
+  --border-strong: #7a8679;
   --green: #2e7d32;
   --green-dark: #1b5e20;
   --green-soft: #e3f1e1;
+  --on-green: #ffffff;
   --red: #b3261e;
   --red-soft: #fbe7e5;
+  --on-red: #ffffff;
   --amber: #8a5a00;
   --amber-soft: #fff1d6;
   --blue: #1f5a96;
@@ -20,19 +24,24 @@
   color-scheme: light;
 }
 
+/* Tema oscuro: sigue al sistema salvo que el usuario elija claro con el interruptor (tema.js),
+   o se fuerza al elegir oscuro. Los dos bloques deben ser idénticos. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --bg: #141a14;
     --surface: #1c241c;
     --surface-2: #232d23;
     --text: #e6ece4;
     --muted: #a3b1a1;
     --border: #334033;
+    --border-strong: #6b7a69;
     --green: #7cc47f;
     --green-dark: #a5d6a7;
     --green-soft: #213a22;
+    --on-green: #102010;
     --red: #f28b82;
     --red-soft: #3d1f1d;
+    --on-red: #2a0f0d;
     --amber: #f0c36d;
     --amber-soft: #3a2f16;
     --blue: #8ab4f8;
@@ -41,6 +50,29 @@
     --shadow: none;
     color-scheme: dark;
   }
+}
+:root[data-theme='dark'] {
+  --bg: #141a14;
+  --surface: #1c241c;
+  --surface-2: #232d23;
+  --text: #e6ece4;
+  --muted: #a3b1a1;
+  --border: #334033;
+  --border-strong: #6b7a69;
+  --green: #7cc47f;
+  --green-dark: #a5d6a7;
+  --green-soft: #213a22;
+  --on-green: #102010;
+  --red: #f28b82;
+  --red-soft: #3d1f1d;
+  --on-red: #2a0f0d;
+  --amber: #f0c36d;
+  --amber-soft: #3a2f16;
+  --blue: #8ab4f8;
+  --blue-soft: #1d2b3d;
+  --gray-soft: #2a332a;
+  --shadow: none;
+  color-scheme: dark;
 }
 
 * {
@@ -387,7 +419,7 @@ select,
 textarea {
   width: 100%;
   padding: 0.5rem 0.6rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
   background: var(--surface);
   color: var(--text);
@@ -415,12 +447,7 @@ button.danger {
 }
 button.primary {
   background: var(--green);
-  color: #fff;
-}
-@media (prefers-color-scheme: dark) {
-  button.primary {
-    color: #102010;
-  }
+  color: var(--on-green);
 }
 button.primary:hover {
   background: var(--green-dark);
@@ -438,6 +465,17 @@ button.danger {
 button:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+.tabs a:focus-visible,
+button.primary:focus-visible,
+button.secondary:focus-visible,
+button.danger:focus-visible,
+.link-button:focus-visible,
+.theme-toggle:focus-visible,
+a.card:focus-visible,
+a.chip:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
 }
 .link-button {
   background: none;
@@ -635,7 +673,7 @@ details.action > form {
 }
 .toast.error {
   background: var(--red);
-  color: #fff;
+  color: var(--on-red);
 }
 
 @media (max-width: 640px) {
@@ -717,6 +755,82 @@ dl.facts + h3 {
   border-color: var(--green);
 }
 
+.login-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+/* ---------- interruptor de tema (T-015) ---------- */
+
+.theme-toggle {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  min-width: 2.75rem;
+  min-height: 2.5rem;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+}
+.theme-track {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  transition:
+    background-color 0.2s,
+    border-color 0.2s;
+}
+.theme-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--border-strong);
+  color: var(--surface);
+  transition: transform 0.2s;
+}
+.theme-knob svg {
+  width: 12px;
+  height: 12px;
+}
+.theme-toggle[aria-checked='true'] .theme-track {
+  background: var(--green);
+  border-color: var(--green);
+}
+.theme-toggle[aria-checked='true'] .theme-knob {
+  transform: translateX(20px);
+  background: var(--surface);
+  color: var(--green);
+}
+.theme-toggle .icon-moon,
+.theme-toggle[aria-checked='true'] .icon-sun {
+  display: none;
+}
+.theme-toggle[aria-checked='true'] .icon-moon {
+  display: block;
+}
+.theme-toggle:hover .theme-track {
+  border-color: var(--green);
+}
+@media (prefers-reduced-motion: reduce) {
+  .theme-track,
+  .theme-knob {
+    transition: none;
+  }
+}
+
 /* ---------- resumen ---------- */
 
 .attention-row {
@@ -752,7 +866,8 @@ dl.facts + h3 {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
   border-radius: 2px;
 }
-.label {
+/* Solo la etiqueta impresa (lbl-*); .card .label y .axis .label son títulos de la interfaz. */
+.label[class*='lbl-'] {
   background: #fff;
   color: #000;
   font-family: Arial, Helvetica, sans-serif;
@@ -824,14 +939,16 @@ dl.facts + h3 {
   font-size: 7.5pt;
 }
 
-input[type='checkbox'] {
+input[type='checkbox'],
+input[type='radio'] {
   width: auto;
   min-height: 0;
   padding: 0;
   margin: 0;
   accent-color: var(--green);
 }
-.row-head label.small {
+.row-head label.small,
+fieldset > label:has(> input[type='radio']) {
   display: flex;
   gap: 0.35rem;
   align-items: center;
@@ -961,7 +1078,7 @@ input[type='checkbox'] {
     grid-auto-rows: 50.8mm;
     column-gap: 4.76mm;
   }
-  .label {
+  .label[class*='lbl-'] {
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
   }
@@ -1077,6 +1194,7 @@ button.cav:focus-visible {
 .cav.s-vacia {
   background: transparent;
   border-style: dashed;
+  border-color: var(--border-strong);
 }
 .cav.s-perdida {
   background: var(--red-soft);

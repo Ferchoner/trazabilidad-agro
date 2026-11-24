@@ -3,6 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <script src="tema.js"></script>
     <title>Trazabilidad de plántula</title>
     <link
       rel="icon"
@@ -13,12 +15,42 @@
   <body>
     <section id="login" class="login" hidden aria-labelledby="login-title">
       <div class="login-card">
-        <div class="brand">
-          <span class="logo" aria-hidden="true"></span>
-          <div>
-            <div class="brand-title">Trazabilidad de plántula</div>
-            <div class="brand-sub" data-producer></div>
+        <div class="login-head">
+          <div class="brand">
+            <span class="logo" aria-hidden="true"></span>
+            <div>
+              <div class="brand-title">Trazabilidad de plántula</div>
+              <div class="brand-sub" data-producer></div>
+            </div>
           </div>
+          <button
+            type="button"
+            class="theme-toggle"
+            data-theme-toggle
+            role="switch"
+            aria-checked="false"
+            aria-label="Modo oscuro"
+          >
+            <span class="theme-track" aria-hidden="true">
+              <span class="theme-knob">
+                <svg class="icon-sun" viewBox="0 0 24 24" width="14" height="14">
+                  <circle cx="12" cy="12" r="4.5" fill="currentColor" />
+                  <path
+                    d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                  />
+                </svg>
+                <svg class="icon-moon" viewBox="0 0 24 24" width="14" height="14">
+                  <path
+                    d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"
+                    fill="currentColor"
+                  />
+                </svg>
+              </span>
+            </span>
+          </button>
         </div>
         <h1 id="login-title">Iniciar sesión</h1>
         <p class="muted small">Elige tu usuario.</p>
@@ -50,6 +82,34 @@
             <div id="session-name" class="session-name"></div>
             <div id="session-role" class="small muted"></div>
           </div>
+          <button
+            type="button"
+            class="theme-toggle"
+            data-theme-toggle
+            role="switch"
+            aria-checked="false"
+            aria-label="Modo oscuro"
+          >
+            <span class="theme-track" aria-hidden="true">
+              <span class="theme-knob">
+                <svg class="icon-sun" viewBox="0 0 24 24" width="14" height="14">
+                  <circle cx="12" cy="12" r="4.5" fill="currentColor" />
+                  <path
+                    d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                  />
+                </svg>
+                <svg class="icon-moon" viewBox="0 0 24 24" width="14" height="14">
+                  <path
+                    d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"
+                    fill="currentColor"
+                  />
+                </svg>
+              </span>
+            </span>
+          </button>
           <button type="button" class="link-button" id="logout">Cerrar sesión</button>
         </div>
       </header>
