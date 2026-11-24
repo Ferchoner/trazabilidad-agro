@@ -20,7 +20,7 @@ Sprint 0 — Discovery and Architecture, desde el 2026-10-18 (`SPRINT.md`). Sin 
 - [x] Un solo repositorio: `Ferchoner/trazabilidad-agro` (ADR-0020)
 - [x] Kit recorrido con el caso Productor A (T-007): 33 mejoras aprobadas por Fernando el 2026-10-19
 - [x] T-015 Interruptor de tema claro/oscuro en el demo y revisión de ambos temas; aprobada por Fernando el 2026-11-24
-- [x] T-016 Finales de línea uniformes (LF) con `.gitattributes`; `npm run check` del demo pasa completo en Windows
+- [x] T-016 Finales de línea uniformes (LF) con `.gitattributes`; `npm run check` del demo pasa completo en Windows; aprobada por Fernando el 2026-11-24
 
 ## In Progress
 
