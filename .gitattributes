@@ -1,5 +1,6 @@
 # Finales de línea (T-016): LF en el repositorio y en la copia de trabajo, en cualquier sistema.
-# Prettier (endOfLine: lf) lo exige; sin esto, core.autocrlf=true en Windows rompe format:check.
+# LF es el valor por defecto de Prettier (endOfLine: lf, declarado en demo/.prettierrc solo por
+# claridad). Lo que evita que core.autocrlf=true en Windows rompa format:check es este archivo.
 * text=auto eol=lf
 
 # Los scripts de Windows necesitan CRLF para ejecutarse bien en cmd.exe.
@@ -17,3 +18,16 @@
 *.xlsx binary
 *.pptx binary
 *.sqlite binary
+*.sqlite3 binary
+*.sqlite-wal binary
+*.sqlite-shm binary
+*.db binary
+*.xls binary
+*.xlsm binary
+*.doc binary
+*.ppt binary
+*.zip binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary

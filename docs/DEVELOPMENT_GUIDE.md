@@ -14,7 +14,12 @@ GitHub Flow: una rama corta por tarea y pull request hacia `main` en `Ferchoner/
 - Identificadores de trazabilidad: ADR-xxxx, P-xx, BR-xxx-nn, UC-xxx-nn, E-nn, T-xxx. Toda regla nueva cita su fuente.
 - Un tipo de evento nuevo se documenta en `DOMAIN_MODEL.md` antes de implementarse; un cambio de contenido sube su `payloadVersion`.
 - Datos de ejemplo siempre ficticios y marcados como tales (ADR-0017).
-- Finales de línea LF en todos los archivos de texto, también en Windows; solo los `.bat` y `.cmd` van con CRLF. Lo fija `.gitattributes` (T-016), sin depender de `core.autocrlf`. Si un clon anterior muestra archivos con CRLF: `git rm --cached -r . && git reset --hard` con la copia de trabajo limpia.
+- Finales de línea LF en todos los archivos de texto, también en Windows; solo los `.bat` y `.cmd` van con CRLF. Lo fija `.gitattributes` (T-016), sin depender de `core.autocrlf`. Si un clon anterior a T-016 sigue mostrando archivos con CRLF, lo más seguro es clonar de nuevo el repositorio. Alternativa en el mismo clon (funciona en PowerShell y Git Bash; un comando por línea):
+  1. `git status` debe salir vacío. Si no, confirma tus cambios o guárdalos con `git stash`.
+  2. `git rm --cached -r -q .`
+  3. `git reset --hard`
+
+  Atención: `git reset --hard` descarta cualquier cambio no confirmado; por eso el paso 1 es obligatorio.
 
 ## Configuración local
 
